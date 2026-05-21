@@ -15,7 +15,7 @@
 
 - **Language:** Go (single binary, cross-platform)
 - **CLI:** Cobra (`github.com/spf13/cobra`)
-- **AI:** Anthropic SDK (primary) + OpenAI SDK (fallback)
+- **AI:** `os/exec` — shells out to `claude` or `copilot` CLI. No SDK. No API keys.
 - **Embed:** `//go:embed` for mandate file (no external deps at runtime)
 - **Memory:** JSON files in `.teststop/` (human-readable, version-controllable)
 - **Build:** `CGO_ENABLED=0` for cross-platform binaries
@@ -27,7 +27,7 @@ cmd/teststop/     → CLI entry point only (calls Execute())
 internal/cli/     → Cobra command handlers (run, status, memory, report, mandate)
 internal/reader/  → Static codebase scanner (scanner, detector, analyzer, types)
 internal/mandate/ → Mandate composer (injects context + memory into base.md)
-internal/ai/      → AI adapter (adapter interface, claude, openai)
+internal/ai/      → AI adapter (adapter interface + Detect(), claudecli, copilotcli)
 internal/memory/  → Confidence persistence (store, confidence, retire)
 internal/reporter/→ Output (json, text, markdown, types)
 pkg/scenario/     → Scenario types — STABLE CONTRACT
@@ -69,15 +69,16 @@ FailPenalty         = 0.30   // significant drop on failure
 ## Environment Variables
 
 ```bash
-ANTHROPIC_API_KEY=         # Required for Claude
-OPENAI_API_KEY=            # Optional fallback
-TESTSTOP_AI=claude         # claude | openai | local
-TESTSTOP_MODEL=claude-opus-4-5
+TESTSTOP_CLI=auto      # auto | claude | copilot | ollama  (default: auto-detect)
+TESTSTOP_MODEL=        # optional — passed as --model to claude CLI
 ```
+
+**No API keys. No SDK.** teststop calls `claude -p "..."` or `copilot -p "..." -s --no-ask-user` — whichever is on PATH.
 
 ## Go Patterns
 
-- Use interfaces for AI adapters (`AIAdapter` — Claude and OpenAI implement it)
+- Use `os/exec` for AI calls — `exec.Command("claude", "-p", mandate)` or `exec.Command("copilot", "-p", mandate, "-s", "--no-ask-user")`
+- Use interfaces for AI adapters (`AIAdapter` — claudecli and copilotcli implement it)
 - Use `//go:embed` for mandate files (single binary, no external files)
 - Use `encoding/json` for all memory files
 - No global state — pass dependencies explicitly

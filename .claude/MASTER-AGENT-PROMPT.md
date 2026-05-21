@@ -3,7 +3,7 @@
 ## Who You Are
 You are the autonomous development agent for **teststop** — an open-source Go CLI that triggers AI to test any software system like a real adversarial user would break it.
 
-You have full authority to implement, test, commit, and PR all phases of the project. You work autonomously, use subagents, and stop only to ask about irreversible decisions.
+You have full authority to implement, test, commit, and PR all phases. You work autonomously and stop only to ask about irreversible decisions.
 
 ---
 
@@ -16,8 +16,9 @@ go version   # expect go1.21+
 # 2. Verify GitHub CLI is authenticated
 gh auth status
 
-# 3. Verify API key is available
-echo $ANTHROPIC_API_KEY | head -c 10   # must be non-empty
+# 3. Check which AI CLI is available (teststop uses these, not API keys)
+which claude && echo "claude CLI available" || echo "claude not found"
+which copilot && echo "copilot CLI available" || echo "copilot not found"
 
 # 4. Confirm repo state
 git log --oneline -5
@@ -25,22 +26,8 @@ git status
 ls -la
 ```
 
-If any of these fail, stop and report to the user.
-
----
-
-## Install MCPs (Run Once Before Starting)
-
-```bash
-# GitHub MCP — for issue management, PR creation
-claude mcp add --transport stdio github -- npx -y @modelcontextprotocol/server-github
-
-# Sequential Thinking MCP — for complex multi-step planning
-claude mcp add --transport stdio sequential-thinking -- npx -y @modelcontextprotocol/server-sequential-thinking
-
-# Verify they are installed
-claude mcp list
-```
+At least one of `claude` or `copilot` must be on PATH — teststop shells out to them.
+If neither is found, install Claude Code: https://claude.ai/code
 
 ---
 
@@ -53,7 +40,7 @@ claude mcp list
 ### The 6 Non-Negotiables (Philosophy)
 1. **ZERO CONFIGURATION** — `teststop run` must work on any project with no setup
 2. **UNIVERSAL** — any language, any age, any system type
-3. **SELF-REDUCING** — tests reduce over time as confidence builds
+3. **SELF-REDUCING** — tests reduce over time as confidence builds. Not grow.
 4. **AGENT-NATIVE** — JSON output is the default, humans are secondary
 5. **ADVERSARIAL** — thinks like a user trying to break it, not a developer testing it
 6. **NO NEW LOOP** — teststop must never become its own maintenance burden
@@ -73,7 +60,7 @@ VolatileThreshold   = 0.75   // warn: this area is unstable
 pkg/scenario/types.go     → Scenario struct (STABLE — lock on v0.1)
 internal/reader/          → ProjectContext builder (scanner, detector, analyzer)
 internal/mandate/         → composer.go (injects context into mandate/base.md)
-internal/ai/              → AIAdapter interface + Claude + OpenAI implementations
+internal/ai/              → adapter.go (interface + Detect()), claudecli.go, copilotcli.go
 internal/memory/          → store.go + confidence.go + retire.go
 internal/reporter/        → json.go + text.go + markdown.go + types.go
 internal/cli/             → run.go, status.go, memory.go, report.go, mandate.go
@@ -81,6 +68,30 @@ cmd/teststop/main.go      → entry point only
 mandate/base.md           → THE MOST IMPORTANT FILE IN THE REPO ⭐
 mandate/embed.go          → //go:embed base.md
 ```
+
+### AI Adapter — No SDK, No API Keys
+
+teststop uses `os/exec` to shell out to the AI CLI on the user's PATH.
+
+```
+TESTSTOP_CLI=auto      # auto | claude | copilot | ollama
+TESTSTOP_MODEL=        # optional — passed as --model to claude CLI
+```
+
+**Detection order (auto):** `claude` → `copilot` → error
+
+**claude invocation:**
+```bash
+claude -p "$(mandate)"                          # basic
+claude -p "$(mandate)" --model claude-opus-4-5  # with model
+```
+
+**copilot invocation:**
+```bash
+copilot -p "$(mandate)" -s --no-ask-user
+```
+
+No `ANTHROPIC_API_KEY`. No `OPENAI_API_KEY`. No Anthropic SDK. No OpenAI SDK.
 
 ### Exit Codes
 ```
@@ -90,19 +101,9 @@ mandate/embed.go          → //go:embed base.md
 3 — teststop internal error
 ```
 
-### Environment Variables
-```bash
-ANTHROPIC_API_KEY=      # required for Claude
-OPENAI_API_KEY=         # optional fallback
-TESTSTOP_AI=claude      # claude | openai | local
-TESTSTOP_MODEL=claude-opus-4-5
-```
-
 ---
 
-## Subagents Available to You
-
-You have 3 specialized subagents. Delegate to them for their areas of expertise:
+## Subagents Available
 
 | Subagent | When to Use |
 |----------|-------------|
@@ -110,13 +111,9 @@ You have 3 specialized subagents. Delegate to them for their areas of expertise:
 | `mandate-writer` | Writing or improving mandate/base.md |
 | `qa-gatekeeper` | Quality gates before any PR (build + test + vet) |
 
-### How to Delegate
-Say in your prompt: "Use the `go-implementer` subagent to implement..."
-Or invoke directly in Claude Code: `/agent go-implementer implement internal/memory/store.go`
-
 ---
 
-## Skills Available to You
+## Skills Available
 
 | Skill | When to Use |
 |-------|-------------|
@@ -138,13 +135,10 @@ P0 (infra)
        └─ P6 (reporter)    ─┘
 ```
 
-P2–P6 can run in parallel after P1.
-P7 requires P2–P6 complete.
-
 ---
 
 ### PHASE 0: Project Infrastructure
-**Issues:** #1, #2, #3, #4, #5, #6 (check which are open)
+**Issues:** #1, #2, #3, #4, #5, #6
 
 ```bash
 gh issue list --label "phase/0-infra" --state open --json number,title
@@ -156,132 +150,114 @@ gh issue list --label "phase/0-infra" --state open --json number,title
    ```
    mkdir -p cmd/teststop pkg/scenario internal/{reader,mandate,ai,memory,reporter,cli} mandate
    ```
-3. Create `go.sum` by fetching dependencies:
+3. Fetch only needed dependency (no AI SDK):
    ```bash
    go get github.com/spf13/cobra@latest
-   go get github.com/anthropics/anthropic-sdk-go@latest
    go mod tidy
    ```
-4. Create `README.md` (user-facing, see PRD for content)
-5. Create `MANDATE.md` (community mandate contribution guide)
-6. Close completed issues
+4. Create `README.md` and `MANDATE.md`
 
-**Quality Gate:** `go build ./...` (no .go files yet — that's fine, just validates go.mod)
+**Quality Gate:** `go build ./...`
 
 ---
 
 ### PHASE 1: Foundation
-**Issues:** #7, #8, #9, #10
+**Issues:** #7, #8
 
 **Tasks:**
-1. `pkg/scenario/types.go` — the Scenario struct contract (LOCK THIS IN)
-   ```go
-   type Scenario struct {
-     ID          string   `json:"id"`
-     Area        string   `json:"area"`
-     Title       string   `json:"title"`
-     Steps       []string `json:"steps"`
-     ExpectedIssue string `json:"expected_issue"`
-     Severity    string   `json:"severity"` // critical|high|medium|low
-     Confidence  float64  `json:"confidence"`
-     Tags        []string `json:"tags"`
-   }
-   ```
-2. `cmd/teststop/main.go` — entry point
-3. `internal/cli/root.go` — Cobra root command with all subcommands registered
-4. `internal/cli/mandate.go` — `teststop mandate --show` (reads embedded mandate)
+1. `pkg/scenario/types.go` — Scenario struct (lock this in)
+2. `cmd/teststop/main.go` + `internal/cli/root.go` — Cobra scaffold
+3. `internal/cli/mandate.go` — `teststop mandate --show`
 
-**Delegation:** Use `go-implementer` subagent.
-
-**Quality Gate:** `go build ./...` + binary runs:
+**Quality Gate:**
 ```bash
+go build ./...
 go run ./cmd/teststop --help   # must list all commands
 ```
 
 ---
 
 ### PHASE 2: Mandate Engine ⭐ HIGHEST PRIORITY
-**Issues:** #11, #12, #13, #14, #15, #16
+**Issues:** #9, #10, #11
 
-**CRITICAL:** mandate/base.md is the most important file. Spend the most time here.
+**Use `mandate-writer` subagent for mandate/base.md.**
 
 **Tasks:**
-1. `mandate/base.md` — write adversarial user mandate. **Use `mandate-writer` subagent.**
-2. `mandate/embed.go` — embed directive
-3. `internal/mandate/base.go` — load embedded mandate
-4. `internal/mandate/composer.go` — inject ProjectContext into mandate template
-5. `mandate/templates/context.md` — template for context injection
-6. Tests for composer
+1. `mandate/base.md` — adversarial user mandate
+2. `mandate/embed.go` — `//go:embed base.md`
+3. `internal/mandate/composer.go` — inject ProjectContext into mandate
 
 **Quality Gate:** `go test ./internal/mandate/...`
 
 ---
 
-### PHASE 3: Reader (Code Scanner)
-**Issues:** #17, #18, #19, #20, #21, #22
+### PHASE 3: Reader
+**Issues:** #12, #13, #14, #15
 
 **Tasks:**
-1. `internal/reader/types.go` — ProjectContext, Flow, FileInfo structs
-2. `internal/reader/scanner.go` — walk file tree, apply .gitignore patterns
-3. `internal/reader/detector.go` — detect language (Go/Python/Node/Rust/etc), type (web/cli/lib/api)
-4. `internal/reader/analyzer.go` — extract key flows, entry points, dependencies
-5. Tests: detector on Go, Python, Node, Rust projects
+1. `internal/reader/types.go` — ProjectContext, Flow structs
+2. `internal/reader/scanner.go` — walk file tree
+3. `internal/reader/detector.go` — detect language, type, entry points
+4. `internal/reader/analyzer.go` — extract key flows
 
 **Quality Gate:** `go test ./internal/reader/...`
 
 ---
 
 ### PHASE 4: Memory Layer
-**Issues:** #23, #24, #25, #26, #27
+**Issues:** #16, #17, #18
 
 **Tasks:**
 1. `internal/memory/store.go` — read/write `.teststop/memory.json`
-2. `internal/memory/confidence.go` — scoring algorithm (use the constants!)
-3. `internal/memory/retire.go` — retirement at threshold 0.95
-4. Tests: 15 passes → confidence 0.9576 → area retired ✓
-5. Tests: memory persists across calls
+2. `internal/memory/confidence.go` — PassWeight=0.19, FailPenalty=0.30
+3. `internal/memory/retire.go` — retire at threshold 0.95
+
+**Test to verify:**
+```go
+// 15 passes → confidence must be >= 0.95
+// 0.0 + (15 * 0.19) = 0.9576 — area gets retired ✓
+```
 
 **Quality Gate:** `go test ./internal/memory/...`
 
 ---
 
 ### PHASE 5: AI Adapter
-**Issues:** #28, #29, #30, #31, #32, #33
+**Issues:** #19, #20, #21
 
-**IMPORTANT:** In v0.1, scenarios are generated NOT executed.
-Confidence increases per generation run, not per scenario execution.
+**No SDK. No API keys. Shell out to CLI.**
 
 **Tasks:**
-1. `internal/ai/adapter.go` — AIAdapter interface: `GenerateScenarios(mandate string) ([]scenario.Scenario, error)`
-2. `internal/ai/claude.go` — Anthropic SDK implementation
-3. `internal/ai/openai.go` — OpenAI fallback
-4. Parse JSON array response from AI → `[]scenario.Scenario`
-5. Graceful errors: missing key, model not found, rate limit
-6. Tests with mock responses
+1. `internal/ai/adapter.go` — AIAdapter interface + ParseScenariosFromJSON + Detect()
+2. `internal/ai/claudecli.go` — `exec.Command("claude", "-p", mandate)`
+3. `internal/ai/copilotcli.go` — `exec.Command("copilot", "-p", mandate, "-s", "--no-ask-user")`
+
+**Test approach:** Create fake `claude` and `copilot` scripts in a temp dir, put on PATH:
+```bash
+echo '#!/bin/sh\necho '"'"'[{"scenario_id":"test-1","title":"Test"}]'"'" > /tmp/fake-claude
+chmod +x /tmp/fake-claude
+PATH=/tmp:$PATH go test ./internal/ai/...
+```
 
 **Quality Gate:** `go test ./internal/ai/...`
 
 ---
 
 ### PHASE 6: Reporter
-**Issues:** #34, #35, #36, #37, #38, #39
+**Issues:** #22, #23, #24
 
 **Tasks:**
 1. `internal/reporter/types.go` — RunResult, Failure structs
-2. `internal/reporter/json.go` — JSON output (default, agent-parseable)
-3. `internal/reporter/text.go` — ANSI human-readable terminal
-4. `internal/reporter/markdown.go` — .md report file
-5. Exit codes (0/1/2/3) based on RunResult
-6. Tests for all formats
+2. `internal/reporter/json.go` — JSON output (default)
+3. `internal/reporter/text.go` — ANSI terminal output
+4. `internal/reporter/markdown.go` — .md report
 
 **Quality Gate:** `go test ./internal/reporter/...`
 
 ---
 
 ### PHASE 7: Wire-up & Integration ⭐ v0.1 DONE HERE
-**Issues:** #40–#46 (approximate)
-
-**This phase makes it real.**
+**Issues:** #25, #26, #27, #28
 
 **Tasks:**
 1. `internal/cli/run.go` — full pipeline:
@@ -289,68 +265,45 @@ Confidence increases per generation run, not per scenario execution.
    reader.Scan(path)
    memory.Load()
    mandate.Compose(context, memory)
-   ai.GenerateScenarios(mandate)
+   ai.Detect() → ai.GenerateScenarios(mandate)
    memory.Update(results)
    reporter.Output(results)
    os.Exit(exitCode)
    ```
-2. `internal/cli/status.go` — show confidence state
-3. `internal/cli/memory.go` — show/reset memory
-4. `internal/cli/report.go` — generate last run report
-5. Integration test: `teststop run .` on teststop itself
-6. Smoke tests on a Python project + Node.js project
+2. `internal/cli/status.go`, `memory.go`, `report.go`
+3. Integration test: `teststop run .` on teststop itself
+4. GoReleaser setup
 
-**Quality Gate:** Full integration test:
+**Smoke test:**
 ```bash
 go build -o /tmp/teststop ./cmd/teststop
-ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY /tmp/teststop run .
-# exit code must be 0, 1, or 2 (never 3)
+/tmp/teststop run .
+# exit 0, 1, or 2 — never 3
 ```
 
 ---
 
-## Between Every Phase: Quality Gates
+## Quality Gates (Between Every Phase)
 
 ```bash
-# Run this after completing each phase
 go build ./...
 go test -race ./...
 go vet ./...
 ```
 
-**Do not start the next phase until all gates pass.**
+**Never start the next phase until all gates pass.**
 
 ---
 
 ## PR Strategy
 
-Create one PR per phase (or combine small phases):
 ```bash
-/teststop-pr 0-1 "Project infrastructure and foundation (go.mod, scaffold, types, CLI)"
-/teststop-pr 2 "Mandate engine (adversarial user instruction + composer)"
+/teststop-pr 0-1 "Project infrastructure and foundation"
+/teststop-pr 2   "Mandate engine"
 /teststop-pr 3-4 "Reader and memory layer"
-/teststop-pr 5-6 "AI adapter and reporter"
-/teststop-pr 7 "Wire-up: complete v0.1 end-to-end"
-```
-
-Each PR:
-- Closes related GitHub issues
-- Has `go test -race ./...` passing
-- Targets `main`
-- Uses the PR template
-
----
-
-## Issue Tracking
-
-Close issues as you complete their acceptance criteria:
-```bash
-gh issue close <number> --comment "Implemented in this phase. go test passes. ✅"
-```
-
-List open issues to track progress:
-```bash
-gh issue list --state open --milestone "v0.1 MVP" --json number,title,labels
+/teststop-pr 5   "AI adapter (CLI-based, no SDK)"
+/teststop-pr 6   "Reporter"
+/teststop-pr 7   "Wire-up: complete v0.1"
 ```
 
 ---
@@ -359,37 +312,31 @@ gh issue list --state open --milestone "v0.1 MVP" --json number,title,labels
 
 ```
 □ go build ./...          → 0 exit
-□ go test -race ./...     → 0 exit, 0 failures
+□ go test -race ./...     → 0 exit
 □ teststop run .          → generates real scenarios (exit 0, 1, or 2)
-□ teststop run --json .   → valid JSON output parseable by jq
+□ teststop run --json .   → valid JSON parseable by jq
 □ teststop status         → shows confidence per area
+□ which claude || which copilot  → at least one present (not an API key)
 □ All v0.1 GitHub issues  → closed
-□ GitHub Project board    → all cards in "Done"
-□ PR merged to main       → final state
+□ PR merged to main
 ```
 
 ---
 
-## Important Rules
+## Absolute Rules
 
-1. **Never change** `pkg/scenario/types.go` JSON field names after the first commit
-2. **Never add** executor logic in v0.1 (scenarios are generated, not run)
-3. **Never** panic in production code — always return errors
-4. **Always** build after each file write: `go build ./...`
-5. **Always** include Co-authored-by in commits:
+1. **Never** use Anthropic SDK, OpenAI SDK, or any AI API client library
+2. **Never** require `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+3. **Never** change `pkg/scenario/types.go` JSON field names after first commit
+4. **Never** add executor logic in v0.1
+5. **Always** `go build ./...` after each file write
+6. **Always** include in commits:
    `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
-6. **If stuck**: delegate to the relevant subagent — don't brute-force
 
 ---
 
 ## Start Command
 
-When ready to begin:
 ```
-Use the implement-phase skill to start Phase 0.
-Then Phase 1.
-Then run Phases 2-6 in parallel (or sequentially if context is limited).
-Then Phase 7.
-Create PRs using the teststop-pr skill.
-Report v0.1 completion when all gates pass.
+Read this file fully. Then use /implement-phase 0 to begin.
 ```

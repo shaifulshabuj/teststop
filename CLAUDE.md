@@ -47,10 +47,10 @@ teststop/
 │   ├── mandate/                 # Compose the AI instruction
 │   │   ├── composer.go          # Inject context + memory into base mandate
 │   │   └── templates/           # context.md enrichment template
-│   ├── ai/                      # AI adapter layer
-│   │   ├── adapter.go           # AIAdapter interface + JSON parser + config
-│   │   ├── claude.go            # Anthropic Claude implementation (primary)
-│   │   └── openai.go            # OpenAI fallback
+│   ├── ai/                      # AI adapter layer — shells out to CLI, no SDK
+│   │   ├── adapter.go           # AIAdapter interface + ParseScenariosFromJSON + Detect()
+│   │   ├── claudecli.go         # `claude -p "mandate"` (Claude Code CLI)
+│   │   └── copilotcli.go        # `copilot -p "mandate" -s --no-ask-user`
 │   ├── memory/                  # Confidence persistence
 │   │   ├── store.go             # Read/write .teststop/memory.json
 │   │   ├── confidence.go        # Confidence scoring (PassWeight=0.19)
@@ -85,7 +85,7 @@ teststop run
   → reader.Scan(path)              # Detect language, type, flows
   → memory.Load()                  # Load .teststop/memory.json
   → mandate.Compose(context, mem)  # Build the AI instruction
-  → ai.GenerateScenarios(mandate)  # Call Claude/OpenAI API
+  → ai.GenerateScenarios(mandate)  # Shell out to claude/copilot CLI
   → memory.Update(results)         # Update confidence scores
   → memory.RetireEligible()        # Retire areas >= 0.95 confidence
   → reporter.Output(results)       # JSON or text or markdown
@@ -107,12 +107,14 @@ go vet ./...             # Vet all packages
 ## Environment Variables
 
 ```bash
-ANTHROPIC_API_KEY=       # Required for Claude (primary)
-OPENAI_API_KEY=          # Optional fallback
-TESTSTOP_AI=claude       # claude | openai | local
-TESTSTOP_MODEL=claude-opus-4-5
-TESTSTOP_LOCAL_URL=      # For local Ollama/LM Studio (v0.2)
+TESTSTOP_CLI=auto        # auto | claude | copilot | ollama  (default: auto-detect)
+TESTSTOP_MODEL=          # optional — passed as --model to claude CLI
 ```
+
+**No API keys. No SDK.** teststop shells out to the AI CLI already on the user's PATH.
+- `claude` CLI (Claude Code) — auto-detected first
+- `copilot` CLI (GitHub Copilot) — auto-detected second
+- `ollama` — opt-in via `TESTSTOP_CLI=ollama` (v0.2)
 
 ## Exit Codes
 
@@ -168,7 +170,8 @@ teststop mandate --show         # Print exact mandate sent to AI
 
 - **Cobra** for CLI framework (`github.com/spf13/cobra`)
 - **`//go:embed`** for mandate file (ship as single binary)
-- **Interfaces** for AI adapter (`AIAdapter` — Claude and OpenAI both implement)
+- **`os/exec`** for AI calls — shell out to `claude` or `copilot` CLI, no SDK
+- **Interfaces** for AI adapter (`AIAdapter` — claudecli and copilotcli implement it)
 - **JSON** for all memory files (human-readable, version-controllable)
 - **No CGO** (`CGO_ENABLED=0`) — cross-platform single binary
 
