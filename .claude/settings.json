@@ -1,0 +1,45 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|Create",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Volumes/SATECHI_WD_BLACK_2/dev/teststop && go build ./... 2>&1 | head -30 || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Volumes/SATECHI_WD_BLACK_2/dev/teststop && [ -f go.mod ] && go test ./... 2>&1 | tail -20 || echo 'no go.mod yet — skipping tests'"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(go build ./...)",
+      "Bash(go test ./...)",
+      "Bash(go test -race ./...)",
+      "Bash(go vet ./...)",
+      "Bash(go mod init *)",
+      "Bash(go mod tidy)",
+      "Bash(go get *)",
+      "Bash(gh issue *)",
+      "Bash(gh pr *)",
+      "Bash(git *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)"
+    ]
+  }
+}
