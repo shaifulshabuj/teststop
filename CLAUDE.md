@@ -195,6 +195,42 @@ teststop mandate --show         # Print exact mandate sent to AI
 
 **Changes to this schema after v0.1 are breaking changes.**
 
+## Development Container (Isolated Agent Environment)
+
+Run Claude Code / Copilot CLI agent inside an isolated linux/arm64 container using Apple Container. The agent can only access the repo (mounted as `/workspace`) — it cannot touch the rest of your host filesystem.
+
+### Prerequisites (macOS arm64 only)
+
+```bash
+brew install container          # Install Apple Container CLI
+container system start          # Start (downloads ~100MB Linux kernel once)
+```
+
+### Launch Container
+
+```bash
+./scripts/dev-container.sh              # Interactive bash — then run `claude` inside
+./scripts/dev-container.sh -- claude    # Start Claude Code agent directly
+```
+
+### What is mounted (read-only from host)
+
+| Host path | Container path | Purpose |
+|---|---|---|
+| `this repo` | `/workspace` | Your code (read-write) |
+| `~/.claude` | `/root/.claude` | Claude Code credentials |
+| `~/.config/gh` | `/root/.config/gh` | gh CLI token |
+| `~/.gitconfig` | `/root/.gitconfig` | Git identity |
+
+**The agent cannot access:** `~/.ssh`, `~/.zshrc`, `~/.aws`, other projects, system files.
+
+### Dockerfile.dev
+
+`Dockerfile.dev` in the repo root. Installs: Go 1.24, gh CLI, Node.js 22, `claude` CLI, `copilot` CLI.
+Build is automatic on first `./scripts/dev-container.sh` run.
+
+---
+
 ## PRD & Philosophy References
 
 All source-of-truth documents are in `teststop-init/`:
