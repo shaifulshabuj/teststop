@@ -1,0 +1,33 @@
+# Build artifacts
+/teststop
+/teststop.exe
+/dist/
+/bin/
+
+# Go
+*.test
+*.out
+*.prof
+coverage.txt
+coverage.html
+
+# IDE / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local env / secrets — never commit API keys
+.env
+.env.local
+*.local
+
+# teststop runtime artifacts that are local-only.
+# Note: .teststop/memory.json and .teststop/retired.json ARE meant to be
+# committed. Only ignore ephemeral run output.
+.teststop/runs/
+.teststop/tmp/
