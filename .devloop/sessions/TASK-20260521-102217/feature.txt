@@ -1,1 +1,0 @@
-'/Volumes/SATECHI_WD_BLACK_2/dev/teststop/teststop-init/04-AGENT-STARTING-PROMPT.md' Start working on the instruction
