@@ -47,10 +47,14 @@ teststop/
 │   ├── mandate/                 # Compose the AI instruction
 │   │   ├── composer.go          # Inject context + memory into base mandate
 │   │   └── templates/           # context.md enrichment template
+│   ├── sandbox/                 # Container isolation layer (Apple Container)
+│   │   ├── detector.go          # Detect() — is `container` system running?
+│   │   ├── runner.go            # Run cmd in container OR directly (auto-fallback)
+│   │   └── types.go             # Mode (auto|required|none), RunConfig, Result
 │   ├── ai/                      # AI adapter layer — shells out to CLI, no SDK
 │   │   ├── adapter.go           # AIAdapter interface + ParseScenariosFromJSON + Detect()
-│   │   ├── claudecli.go         # `claude -p "mandate"` (Claude Code CLI)
-│   │   └── copilotcli.go        # `copilot -p "mandate" -s --no-ask-user`
+│   │   ├── claudecli.go         # `claude -p "mandate"` via sandbox.Runner
+│   │   └── copilotcli.go        # `copilot -p "mandate" -s --no-ask-user` via sandbox.Runner
 │   ├── memory/                  # Confidence persistence
 │   │   ├── store.go             # Read/write .teststop/memory.json
 │   │   ├── confidence.go        # Confidence scoring (PassWeight=0.19)
@@ -65,7 +69,8 @@ teststop/
 ├── mandate/
 │   ├── base.md                  # THE MANDATE — the soul of teststop ⭐
 │   └── embed.go                 # //go:embed base.md
-└── .teststop/                   # Runtime memory (created at first run)
+├── Dockerfile.agent             # Minimal runtime image — AI CLIs only (used by sandbox)
+├── Dockerfile.dev               # Full dev environment (Go + CLIs + gh)
     ├── memory.json              # Confidence state (commit this)
     ├── retired.json             # Retired test areas (commit this)
     ├── runs/                    # Run history (gitignored)
@@ -85,7 +90,8 @@ teststop run
   → reader.Scan(path)              # Detect language, type, flows
   → memory.Load()                  # Load .teststop/memory.json
   → mandate.Compose(context, mem)  # Build the AI instruction
-  → ai.GenerateScenarios(mandate)  # Shell out to claude/copilot CLI
+  → sandbox.Detect()               # Is Apple Container available?
+  → ai.GenerateScenarios(mandate)  # Run claude/copilot in sandbox (or direct)
   → memory.Update(results)         # Update confidence scores
   → memory.RetireEligible()        # Retire areas >= 0.95 confidence
   → reporter.Output(results)       # JSON or text or markdown
@@ -109,12 +115,74 @@ go vet ./...             # Vet all packages
 ```bash
 TESTSTOP_CLI=auto        # auto | claude | copilot | ollama  (default: auto-detect)
 TESTSTOP_MODEL=          # optional — passed as --model to claude CLI
+TESTSTOP_SANDBOX=auto    # auto | required | none  (default: auto)
+                         #   auto     = use container if available, else run direct
+                         #   required = error if Apple Container not running
+                         #   none     = always run AI CLI directly (no container)
 ```
 
 **No API keys. No SDK.** teststop shells out to the AI CLI already on the user's PATH.
-- `claude` CLI (Claude Code) — auto-detected first
-- `copilot` CLI (GitHub Copilot) — auto-detected second
-- `ollama` — opt-in via `TESTSTOP_CLI=ollama` (v0.2)
+
+## Runtime Sandbox (internal/sandbox/)
+
+teststop runs the AI CLI inside an Apple Container VM when available. The AI executes inside an isolated linux/arm64 environment — it cannot access the user's host filesystem beyond the mounted project path.
+
+```
+teststop run (user's machine)
+  └─ sandbox.Runner.Run(mandate)
+       ├─ [container available] → container run --rm teststop-agent:latest claude -p "..."
+       │       Isolated VM: AI reads mandate, outputs JSON → captured by teststop
+       └─ [no container] → exec.Command("claude", "-p", mandate)  ← direct fallback
+```
+
+**sandbox.Runner logic (`internal/sandbox/runner.go`):**
+```go
+func (r *Runner) Run(ctx context.Context, cfg RunConfig, cmd string, args ...string) Result {
+    if r.shouldUseContainer() {
+        return r.runInContainer(ctx, cfg, cmd, args...) // container run --rm ...
+    }
+    return r.runDirect(ctx, cmd, args...)               // exec.Command(cmd, args...)
+}
+```
+
+**Sandbox modes (`TESTSTOP_SANDBOX`):**
+- `auto` — detect if `container system status` shows running; use if yes, direct if no
+- `required` — error if container not available (strict isolation enforcement)
+- `none` — always run directly (useful for CI, Docker-in-Docker, non-macOS)
+
+**Runtime image:** `Dockerfile.agent` — minimal Ubuntu 24.04 + claude + copilot CLI only.
+No Go, no gh, no dev tools. Ephemeral per-run (`--rm`). Published as `ghcr.io/shaifulshabuj/teststop-agent:latest`.
+
+**Credential mounts (auto, read-only):**
+- `~/.claude` → `/root/.claude:ro` (Claude auth)
+- `~/.config/gh` → `/root/.config/gh:ro` (Copilot auth)
+
+### Permission Map — Two Isolation Layers
+
+**Layer 1 — Dev container** (`Dockerfile.dev`, launched by `scripts/dev-container.sh`):
+The coding agent (Claude/Copilot) that *builds teststop* runs here.
+
+| Path | Permission | Purpose |
+|------|-----------|---------|
+| `/workspace` | ✅ full R/W | The teststop repo — agent edits code, runs builds/tests |
+| Container OS | ✅ full root | Can run any command inside the VM |
+| `/root/.claude` | 🔒 read-only | Claude Code credentials — cannot be modified |
+| `/root/.config/gh` | 🔒 read-only | gh CLI credentials — cannot be modified |
+| Everything else | ❌ invisible | No ~/.ssh, no other projects, no host system files |
+
+**Layer 2 — Runtime container** (`Dockerfile.agent`, spawned by `sandbox.Runner`):
+The AI that *runs inside teststop* when generating/executing test scenarios.
+
+| Context | Path | Permission |
+|---------|------|-----------|
+| v0.1 (generate) | no filesystem mount | AI receives mandate as CLI arg, outputs JSON to stdout |
+| v0.2 (execute) | user's project | 🔒 read-only — AI reads code but cannot modify it |
+| v0.2 (execute) | localhost network | ✅ allowed — AI calls the running app under test |
+| Host filesystem | everything else | ❌ invisible |
+
+**Fallback — no container** (`TESTSTOP_SANDBOX=none` or container not installed):
+Direct `exec.Command("claude", "-p", mandate)` — inherits full host user permissions.
+This is the only case where the AI touches the real host. Always prefer sandbox when available.
 
 ## Exit Codes
 

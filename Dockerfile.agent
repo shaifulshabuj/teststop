@@ -1,0 +1,48 @@
+# teststop-agent — Minimal Runtime Image for AI Execution
+#
+# Purpose: teststop runs AI (claude/copilot) INSIDE this container when
+#          Apple Container is available (TESTSTOP_SANDBOX=auto|required).
+#          The AI gets an isolated VM — it cannot touch the user's host filesystem.
+#
+# Published: ghcr.io/shaifulshabuj/teststop-agent:latest
+# Arch:      linux/arm64 (Apple Container / Apple Silicon only in v0.1)
+#
+# teststop invokes this as:
+#   container run --rm --name teststop-<uuid> \
+#     --volume ~/.claude:/root/.claude:ro \
+#     --volume ~/.config/gh:/root/.config/gh:ro \
+#     ghcr.io/shaifulshabuj/teststop-agent:latest \
+#     claude -p "<mandate>"
+#
+# The AI outputs JSON to stdout — teststop captures it and parses scenarios.
+# Container is ephemeral (--rm): auto-deleted after each run.
+
+FROM ubuntu:24.04
+
+LABEL org.opencontainers.image.title="teststop-agent"
+LABEL org.opencontainers.image.description="Minimal runtime image: AI CLIs only. Used by teststop sandbox runner."
+LABEL org.opencontainers.image.source="https://github.com/shaifulshabuj/teststop"
+
+# ── Minimal base ──────────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Node.js 22 (for GitHub Copilot CLI) ──────────────────────────────────────
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g @githubnext/github-copilot-cli 2>/dev/null \
+    || echo "⚠  copilot CLI install skipped"
+
+# ── Claude Code CLI ───────────────────────────────────────────────────────────
+RUN curl -fsSL https://claude.ai/install.sh | bash \
+    || echo "⚠  Claude CLI install skipped"
+ENV PATH="/root/.claude/local/bin:/root/.local/bin:$PATH"
+
+# Credentials are mounted read-only at runtime:
+#   --volume ~/.claude:/root/.claude:ro
+#   --volume ~/.config/gh:/root/.config/gh:ro
+VOLUME ["/root/.claude", "/root/.config/gh"]
+
+CMD ["/bin/sh"]

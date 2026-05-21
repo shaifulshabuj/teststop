@@ -60,6 +60,7 @@ VolatileThreshold   = 0.75   // warn: this area is unstable
 pkg/scenario/types.go     → Scenario struct (STABLE — lock on v0.1)
 internal/reader/          → ProjectContext builder (scanner, detector, analyzer)
 internal/mandate/         → composer.go (injects context into mandate/base.md)
+internal/sandbox/         → detector.go + runner.go + types.go (container isolation)
 internal/ai/              → adapter.go (interface + Detect()), claudecli.go, copilotcli.go
 internal/memory/          → store.go + confidence.go + retire.go
 internal/reporter/        → json.go + text.go + markdown.go + types.go
@@ -67,28 +68,47 @@ internal/cli/             → run.go, status.go, memory.go, report.go, mandate.g
 cmd/teststop/main.go      → entry point only
 mandate/base.md           → THE MOST IMPORTANT FILE IN THE REPO ⭐
 mandate/embed.go          → //go:embed base.md
+Dockerfile.agent          → Minimal runtime image (claude + copilot CLI only)
 ```
 
 ### AI Adapter — No SDK, No API Keys
 
-teststop uses `os/exec` to shell out to the AI CLI on the user's PATH.
+teststop uses `os/exec` to shell out to the AI CLI. When Apple Container is available, it runs the CLI **inside an isolated container** (`Dockerfile.agent` image).
 
 ```
 TESTSTOP_CLI=auto      # auto | claude | copilot | ollama
 TESTSTOP_MODEL=        # optional — passed as --model to claude CLI
+TESTSTOP_SANDBOX=auto  # auto | required | none
+```
+
+**Runtime pipeline:**
+```
+teststop run
+  → sandbox.Detect()             # is container system running?
+  → ai.GenerateScenarios(mandate)
+       ├─ [sandbox available] → container run --rm teststop-agent:latest claude -p "..."
+       └─ [no sandbox] → exec.Command("claude", "-p", mandate)  ← direct fallback
 ```
 
 **Detection order (auto):** `claude` → `copilot` → error
 
-**claude invocation:**
+**claude invocation (via sandbox):**
 ```bash
-claude -p "$(mandate)"                          # basic
-claude -p "$(mandate)" --model claude-opus-4-5  # with model
+container run --rm --name teststop-<uuid> \
+  --volume ~/.claude:/root/.claude:ro \
+  ghcr.io/shaifulshabuj/teststop-agent:latest \
+  claude -p "<mandate>"
 ```
 
-**copilot invocation:**
+**claude invocation (direct fallback):**
 ```bash
-copilot -p "$(mandate)" -s --no-ask-user
+claude -p "<mandate>"
+claude -p "<mandate>" --model claude-opus-4-5   # with TESTSTOP_MODEL
+```
+
+**copilot invocation (via sandbox or direct):**
+```bash
+copilot -p "<mandate>" -s --no-ask-user
 ```
 
 No `ANTHROPIC_API_KEY`. No `OPENAI_API_KEY`. No Anthropic SDK. No OpenAI SDK.
@@ -222,24 +242,43 @@ go run ./cmd/teststop --help   # must list all commands
 
 ---
 
-### PHASE 5: AI Adapter
-**Issues:** #19, #20, #21
+### PHASE 5: AI Adapter + Sandbox
+**Issues:** #19, #20, #21, #34, #35
 
-**No SDK. No API keys. Shell out to CLI.**
+**No SDK. No API keys. Shell out to CLI. Run in sandbox when available.**
 
 **Tasks:**
-1. `internal/ai/adapter.go` — AIAdapter interface + ParseScenariosFromJSON + Detect()
-2. `internal/ai/claudecli.go` — `exec.Command("claude", "-p", mandate)`
-3. `internal/ai/copilotcli.go` — `exec.Command("copilot", "-p", mandate, "-s", "--no-ask-user")`
+1. `internal/sandbox/types.go` — `Mode` (auto/required/none), `RunConfig`, `Result`
+2. `internal/sandbox/detector.go` — `Detect() bool` (checks `container system status`)
+3. `internal/sandbox/runner.go` — `Runner`: runs cmd in container VM or direct fallback
+4. `internal/ai/adapter.go` — `AIAdapter` interface + `ParseScenariosFromJSON` + `Detect()`
+5. `internal/ai/claudecli.go` — uses `sandbox.Runner` → `claude -p "mandate"`
+6. `internal/ai/copilotcli.go` — uses `sandbox.Runner` → `copilot -p "mandate" -s --no-ask-user`
+7. `Dockerfile.agent` — minimal runtime image (claude + copilot CLIs only)
 
-**Test approach:** Create fake `claude` and `copilot` scripts in a temp dir, put on PATH:
-```bash
-echo '#!/bin/sh\necho '"'"'[{"scenario_id":"test-1","title":"Test"}]'"'" > /tmp/fake-claude
-chmod +x /tmp/fake-claude
-PATH=/tmp:$PATH go test ./internal/ai/...
+**sandbox.Runner core logic:**
+```go
+func (r *Runner) Run(ctx context.Context, cfg RunConfig, cmd string, args ...string) Result {
+    if r.shouldUseContainer() {
+        // container run --rm --name teststop-<uuid> [mounts] [envs] <image> <cmd> <args...>
+        return r.runInContainer(ctx, cfg, cmd, args...)
+    }
+    return r.runDirect(ctx, cmd, args...) // exec.Command(cmd, args...)
+}
 ```
 
-**Quality Gate:** `go test ./internal/ai/...`
+**sandbox.Detector:**
+```go
+func Detect() bool {
+    path, err := exec.LookPath("container")
+    if err != nil { return false }
+    out, err := exec.Command(path, "system", "status").Output()
+    return err == nil && bytes.Contains(out, []byte("running"))
+}
+```
+
+**Test approach for sandbox:** Set `TESTSTOP_SANDBOX=none` in tests to skip container.
+**Test approach for ai/:** Fake `claude`/`copilot` scripts in temp dir on PATH.
 
 ---
 
