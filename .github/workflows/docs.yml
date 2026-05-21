@@ -1,0 +1,76 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version alias to deploy (e.g. dev, v0.2.0). Defaults to "dev" for manual runs.'
+        required: false
+        default: dev
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # mike needs full history
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+
+      - name: Install documentation dependencies
+        run: pip install -r docs/requirements.txt
+
+      - name: Configure git for mike
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # ── Release publish → deploy as version tag + update stable alias ──────
+      - name: Deploy versioned docs (release)
+        if: github.event_name == 'release'
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          mike deploy --push --update-aliases "$VERSION" stable
+          mike set-default --push stable
+
+      # ── Push to main with docs changes → deploy as dev/latest ──────────────
+      - name: Deploy dev docs (main push)
+        if: github.event_name == 'push'
+        run: |
+          mike deploy --push --update-aliases dev latest
+          # Only set default to latest if stable has never been deployed
+          mike list | grep -q "stable" || mike set-default --push latest
+
+      # ── Manual workflow dispatch ────────────────────────────────────────────
+      - name: Deploy manual version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          mike deploy --push "$VERSION"
+          echo "Deployed docs as version: $VERSION"
