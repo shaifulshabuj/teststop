@@ -1,0 +1,74 @@
+name: Mandate Improvement
+description: Propose an improvement to the core adversarial user mandate (mandate/base.md)
+title: "[MANDATE] "
+labels: ["type/mandate", "mandate-core"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## The mandate is the most important part of teststop.
+        
+        The mandate (`mandate/base.md`) is the instruction that makes AI test like a real adversarial user.
+        **Anyone can improve it — no coding experience required.**
+        
+        A good mandate improvement makes AI generate more realistic, more adversarial, more human scenarios.
+
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: What is the current mandate missing or getting wrong?
+      description: Which part of the mandate is weak? What scenarios is it failing to generate?
+      placeholder: |
+        The mandate doesn't ask AI to consider users who switch devices mid-flow.
+        This means scenarios like "start checkout on mobile, complete on desktop" are never generated.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_improvement
+    attributes:
+      label: Proposed Improvement
+      description: What specific text should be added or changed? You can write the exact mandate text.
+      placeholder: |
+        Add to "Your Testing Mindset" section:
+        
+        - Start a task on one device and complete it on a different device
+        - Expect your session to survive a browser refresh or app backgrounding
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why does this matter?
+      description: What real user behavior pattern does this capture? Have you seen this fail in production?
+    validations:
+      required: true
+
+  - type: input
+    id: test_project
+    attributes:
+      label: Test Project Used
+      description: What project did you test this improvement against?
+      placeholder: "My Node.js e-commerce API, Go CLI tool, etc."
+
+  - type: textarea
+    id: scenario_examples
+    attributes:
+      label: Example Scenarios This Would Generate
+      description: Paste 1-2 example scenarios this mandate improvement would cause AI to generate.
+      placeholder: |
+        {
+          "title": "Cross-device checkout continuation",
+          "user_perspective": "User who started shopping on phone, switches to laptop",
+          "steps": ["Add items to cart on mobile", "Open same site on desktop", "Expect cart to be preserved"],
+          ...
+        }
+
+  - type: checkboxes
+    id: tested
+    attributes:
+      label: Did you test this?
+      options:
+        - label: I tested this mandate text by pasting it into Claude and reviewing the generated scenarios
+          required: false

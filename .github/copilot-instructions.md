@@ -1,0 +1,142 @@
+# GitHub Copilot Instructions — teststop
+
+> teststop is an agent-native CLI tool that triggers AI to test any system the way a real adversarial user would break it. Zero configuration. Any language. Self-reducing.
+
+## Core Philosophy (6 Non-Negotiables)
+
+1. **ZERO CONFIGURATION** — `teststop run` works with no setup on any project
+2. **UNIVERSAL** — any language, any age, any system type
+3. **SELF-REDUCING** — tests reduce over time. Not grow.
+4. **AGENT-NATIVE** — JSON output for AI agents by default
+5. **NO NEW LOOP** — never becomes a maintenance burden
+6. **EXIT CONDITION** — success = the user needs it less, not more
+
+## Technology Stack
+
+- **Language:** Go (single binary, cross-platform)
+- **CLI:** Cobra (`github.com/spf13/cobra`)
+- **AI:** Anthropic SDK (primary) + OpenAI SDK (fallback)
+- **Embed:** `//go:embed` for mandate file (no external deps at runtime)
+- **Memory:** JSON files in `.teststop/` (human-readable, version-controllable)
+- **Build:** `CGO_ENABLED=0` for cross-platform binaries
+
+## Package Structure
+
+```
+cmd/teststop/     → CLI entry point only (calls Execute())
+internal/cli/     → Cobra command handlers (run, status, memory, report, mandate)
+internal/reader/  → Static codebase scanner (scanner, detector, analyzer, types)
+internal/mandate/ → Mandate composer (injects context + memory into base.md)
+internal/ai/      → AI adapter (adapter interface, claude, openai)
+internal/memory/  → Confidence persistence (store, confidence, retire)
+internal/reporter/→ Output (json, text, markdown, types)
+pkg/scenario/     → Scenario types — STABLE CONTRACT
+mandate/          → base.md (THE KEY FILE) + embed.go
+```
+
+## Build & Test Commands
+
+```bash
+go build ./...        # Must pass on every commit
+go test ./...         # Must pass on every commit
+go run ./cmd/teststop # Local CLI run
+go mod tidy           # Keep go.sum in sync
+go vet ./...          # Static analysis
+```
+
+## Critical File: mandate/base.md
+
+This is **the most important file**. It is the adversarial user instruction sent to AI. Everything else serves this file. When in doubt, improve the mandate before improving the code.
+
+## Key Constants
+
+```go
+// internal/memory/confidence.go
+RetirementThreshold = 0.95   // retire when confidence >= this
+PassWeight          = 0.19   // 15 passes → retirement (math: 15 * 0.19 = 0.9576 > 0.95)
+FailPenalty         = 0.30   // significant drop on failure
+```
+
+## Exit Codes
+
+```
+0 = confidence threshold met (safe to deploy)
+1 = below threshold (review required)
+2 = critical failures (do NOT deploy)
+3 = teststop internal error
+```
+
+## Environment Variables
+
+```bash
+ANTHROPIC_API_KEY=         # Required for Claude
+OPENAI_API_KEY=            # Optional fallback
+TESTSTOP_AI=claude         # claude | openai | local
+TESTSTOP_MODEL=claude-opus-4-5
+```
+
+## Go Patterns
+
+- Use interfaces for AI adapters (`AIAdapter` — Claude and OpenAI implement it)
+- Use `//go:embed` for mandate files (single binary, no external files)
+- Use `encoding/json` for all memory files
+- No global state — pass dependencies explicitly
+- Error messages must be human-readable and actionable
+- Never panic in production code — return errors
+
+## What NOT to Build in v0.1
+
+- No executor/dynamic test running (v0.2)
+- No Waymark integration (v1.0)
+- No DocuFlow integration (v1.0)
+- No web UI
+- No CI/CD plugins
+- No Windows-specific code yet
+
+## Scenario Schema (pkg/scenario/types.go)
+
+This is the stable contract between teststop and AI agents. **Do not change field names or types after v0.1 — that's a breaking change.**
+
+```go
+type Scenario struct {
+    ScenarioID       string   `json:"scenario_id"`
+    Title            string   `json:"title"`
+    UserPerspective  string   `json:"user_perspective"`
+    Preconditions    []string `json:"preconditions"`
+    Steps            []string `json:"steps"`
+    ChaosFactors     []string `json:"chaos_factors"`
+    ExpectedBehavior string   `json:"expected_behavior"`
+    FailureModes     []string `json:"failure_modes"`
+    Priority         string   `json:"priority"`
+    ConfidenceArea   string   `json:"confidence_area"`
+    IsEdgeCase       bool     `json:"is_edge_case"`
+}
+```
+
+## Commit Convention
+
+```
+feat(component): short description
+fix(component): what was wrong
+docs: what was documented
+test(component): what was tested
+refactor(component): what changed
+
+Examples:
+feat(mandate): expand chaos patterns in base mandate
+fix(memory): correct confidence calculation for first run
+test(reader): add language detection for Rust projects
+```
+
+## The One Decision Rule
+
+> "Does this make the user's problem easier to solve — or our system easier to build?"
+
+If the answer is the second: cut it.
+
+## References
+
+- Philosophy: `teststop-init/01-PHILOSOPHY.md`
+- Goals: `teststop-init/02-PROJECT-GOALS.md`
+- PRD: `teststop-init/03-PRD.md`
+- Agent Prompt: `teststop-init/04-AGENT-STARTING-PROMPT.md`

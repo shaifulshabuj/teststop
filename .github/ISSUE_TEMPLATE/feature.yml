@@ -1,0 +1,72 @@
+name: Feature Request
+description: Propose a new feature or enhancement for teststop
+title: "[FEATURE] "
+labels: ["type/feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, ask: **"Does this make the user's problem easier to solve — or our system easier to build?"**
+        If it's the second: don't submit it.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What should teststop do?
+      description: Describe the feature clearly and concisely.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why does this matter?
+      description: What user problem does this solve? Which of the 6 design principles does it support?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: How will we know this is done? Be specific.
+      placeholder: |
+        - [ ] teststop run with this feature works on a Go project
+        - [ ] go test ./... passes
+        - [ ] No new configuration required (zero config)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - mandate (mandate/base.md) — highest priority
+        - reader (internal/reader)
+        - memory (internal/memory)
+        - ai (internal/ai)
+        - reporter (internal/reporter)
+        - cli (internal/cli)
+        - scenario types (pkg/scenario)
+        - infrastructure (CI/CD, build)
+        - documentation
+    validations:
+      required: true
+
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Target Milestone
+      options:
+        - v0.1 MVP (core CLI + mandate + AI + memory)
+        - v0.2 (executor + local models)
+        - v1.0 (ecosystem integration + CI/CD)
+    validations:
+      required: true
+
+  - type: textarea
+    id: agent_notes
+    attributes:
+      label: Agent Notes (optional)
+      description: Any context that will help an AI agent implement this. Include file paths, interfaces, or patterns to follow.
