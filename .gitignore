@@ -31,3 +31,6 @@ Thumbs.db
 # committed. Only ignore ephemeral run output.
 .teststop/runs/
 .teststop/tmp/
+
+# Docuflow
+.docuflow/
