@@ -1,4 +1,9 @@
 package mandate
 
-// Base is the adversarial user mandate. Populated by Phase 2.
-const Base = "# teststop Mandate\n\n(Phase 2 will populate this)"
+import _ "embed"
+
+//go:embed base.md
+var BaseMandateContent string
+
+// Base is the embedded mandate content, kept for backward compatibility with CLI commands.
+var Base = BaseMandateContent
