@@ -1,31 +1,17 @@
 version: 2
 project_name: teststop
 
-before:
-  hooks:
-    - go mod tidy
-
 builds:
   - main: ./cmd/teststop
     binary: teststop
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: -s -w -X main.version={{.Version}}
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    files:
-      - README.md
-      - MANDATE.md
-      - LICENSE
 
 checksum:
   name_template: 'checksums.txt'
@@ -33,16 +19,9 @@ checksum:
 changelog:
   sort: asc
   filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'
-      - '^Merge'
+    exclude: ['^docs:', '^test:', '^chore:']
 
 release:
   github:
     owner: shaifulshabuj
     name: teststop
-  draft: false
-  prerelease: auto
-  name_template: "teststop {{.Version}}"

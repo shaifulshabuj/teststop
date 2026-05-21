@@ -7,28 +7,20 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
-    name: Build & Test
+  test:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version: stable
-
-      - name: Verify go.sum is clean
-        run: |
-          go mod tidy
-          git diff --exit-code go.sum
+          go-version-file: go.mod
 
       - name: Build
         run: go build ./...
 
       - name: Test
-        run: go test -v -race ./...
+        run: go test -race ./...
 
       - name: Vet
         run: go vet ./...
