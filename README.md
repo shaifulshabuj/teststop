@@ -2,6 +2,11 @@
 
 > Trigger AI to test your software the way a real adversarial user would break it.
 
+[![Documentation](https://img.shields.io/badge/docs-shaifulshabuj.github.io%2Fteststop-6a0dad?style=flat-square)](https://shaifulshabuj.github.io/teststop/)
+[![Go Reference](https://pkg.go.dev/badge/github.com/shaifulshabuj/teststop.svg)](https://pkg.go.dev/github.com/shaifulshabuj/teststop)
+
+**[Full Documentation →](https://shaifulshabuj.github.io/teststop/)**
+
 ---
 
 ## The Problem
