@@ -13,7 +13,32 @@ type Scenario struct {
 	Priority         string   `json:"priority"` // critical | high | medium | low
 	ConfidenceArea   string   `json:"confidence_area"`
 	IsEdgeCase       bool     `json:"is_edge_case"`
+
+	// Exec is an OPTIONAL v0.2 additive extension. When the AI can map a scenario
+	// to a concrete, machine-executable request it emits an exec block, enabling
+	// deterministic execution. Prose-only scenarios (no exec) remain fully valid
+	// and are executed via the AI-driven or static path. omitempty keeps legacy
+	// v0.1 JSON (no exec field) parsing unchanged.
+	Exec *ExecSpec `json:"exec,omitempty"`
 }
+
+// ExecSpec describes how to deterministically execute a scenario. Optional (v0.2).
+type ExecSpec struct {
+	Mode           string            `json:"mode,omitempty"`            // "http" | "cli"
+	Method         string            `json:"method,omitempty"`          // HTTP verb (GET, POST, ...)
+	Path           string            `json:"path,omitempty"`            // appended to the run --target base URL
+	Headers        map[string]string `json:"headers,omitempty"`         // HTTP request headers
+	Body           string            `json:"body,omitempty"`            // HTTP request body
+	ExpectedStatus int               `json:"expected_status,omitempty"` // 0 = "any non-5xx is a pass"
+	Command        []string          `json:"command,omitempty"`         // CLI mode argv
+	ExpectedExit   int               `json:"expected_exit,omitempty"`   // CLI mode expected exit code
+}
+
+// ExecMode values for ExecSpec.Mode.
+const (
+	ExecHTTP = "http"
+	ExecCLI  = "cli"
+)
 
 const (
 	PriorityCritical = "critical"

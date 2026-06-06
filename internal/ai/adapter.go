@@ -14,6 +14,9 @@ import (
 type AIAdapter interface {
 	// GenerateScenarios sends the mandate to the AI and returns parsed scenarios.
 	GenerateScenarios(mandate string) ([]scenario.Scenario, error)
+	// Prompt sends an arbitrary instruction to the AI and returns its raw stdout.
+	// Used for AI-driven scenario execution (v0.2 executor).
+	Prompt(input string) ([]byte, error)
 	// Name returns the adapter name (e.g., "claude", "copilot").
 	Name() string
 }

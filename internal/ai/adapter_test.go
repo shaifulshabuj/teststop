@@ -87,6 +87,36 @@ func TestParseScenarios_whitespace(t *testing.T) {
 	}
 }
 
+func TestParseScenarios_legacyHasNilExec(t *testing.T) {
+	// v0.1 JSON has no exec field; it must still parse with Exec == nil.
+	raw := []byte(`[{"scenario_id":"s1","title":"t","user_perspective":"u","preconditions":[],"steps":["a"],"chaos_factors":[],"expected_behavior":"e","failure_modes":[],"priority":"low","confidence_area":"x","is_edge_case":false}]`)
+	scenarios, err := ai.ParseScenariosFromJSON(raw)
+	if err != nil {
+		t.Fatalf("legacy JSON should parse: %v", err)
+	}
+	if scenarios[0].Exec != nil {
+		t.Errorf("expected nil Exec for legacy scenario, got %+v", scenarios[0].Exec)
+	}
+}
+
+func TestParseScenarios_execRoundTrips(t *testing.T) {
+	raw := []byte(`[{"scenario_id":"s1","title":"t","user_perspective":"u","preconditions":[],"steps":["a"],"chaos_factors":[],"expected_behavior":"e","failure_modes":[],"priority":"critical","confidence_area":"auth","is_edge_case":true,"exec":{"mode":"http","method":"POST","path":"/api/login","headers":{"Content-Type":"application/json"},"body":"{}","expected_status":400}}]`)
+	scenarios, err := ai.ParseScenariosFromJSON(raw)
+	if err != nil {
+		t.Fatalf("exec JSON should parse: %v", err)
+	}
+	e := scenarios[0].Exec
+	if e == nil {
+		t.Fatal("expected non-nil Exec")
+	}
+	if e.Mode != "http" || e.Method != "POST" || e.Path != "/api/login" || e.ExpectedStatus != 400 {
+		t.Errorf("exec fields not parsed correctly: %+v", e)
+	}
+	if e.Headers["Content-Type"] != "application/json" {
+		t.Errorf("exec headers not parsed: %+v", e.Headers)
+	}
+}
+
 func TestParseScenarios_multipleScenarios(t *testing.T) {
 	raw := []byte(`[
   {"scenario_id":"a1","title":"A","user_perspective":"u","preconditions":[],"steps":[],"chaos_factors":[],"expected_behavior":"e","failure_modes":[],"priority":"critical","confidence_area":"auth","is_edge_case":true},

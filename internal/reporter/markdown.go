@@ -44,6 +44,19 @@ func WriteMarkdown(w io.Writer, result RunResult) error {
 	}
 	sb.WriteString("\n")
 
+	// Execution section
+	es := result.ExecSummary
+	target := es.Target
+	if target == "" {
+		target = "_none — static validation_"
+	}
+	sb.WriteString("## Execution\n\n")
+	sb.WriteString(fmt.Sprintf("- **Target:** %s\n", target))
+	sb.WriteString(fmt.Sprintf(
+		"- **Results:** %d passed, %d failed of %d executed\n\n",
+		es.Passed, es.Failed, es.Executed,
+	))
+
 	// Failures section
 	sb.WriteString(fmt.Sprintf("## Failures (%d)\n\n", len(result.Failures)))
 	if len(result.Failures) == 0 {
