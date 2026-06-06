@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -105,6 +106,21 @@ func TestRun_ConcurrencyIsBounded(t *testing.T) {
 		if !r.Passed {
 			t.Errorf("scenario %s failed: %s", r.ScenarioID, r.FailureReason)
 		}
+	}
+}
+
+func TestExecutionResult_DurationMarshalsAsMilliseconds(t *testing.T) {
+	r := ExecutionResult{ScenarioID: "s1", Duration: 1500 * time.Millisecond}
+	b, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["duration_ms"] != float64(1500) {
+		t.Errorf("duration_ms = %v, want 1500 (milliseconds, not nanoseconds)", got["duration_ms"])
 	}
 }
 

@@ -11,6 +11,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/shaifulshabuj/teststop/internal/ai"
@@ -42,6 +43,16 @@ type ExecutionResult struct {
 	FailureReason  string        `json:"failure_reason,omitempty"`
 	Priority       string        `json:"priority"`
 	Duration       time.Duration `json:"duration_ms"`
+}
+
+// MarshalJSON renders Duration as integer milliseconds (the field is named
+// duration_ms), rather than the nanosecond default for time.Duration.
+func (r ExecutionResult) MarshalJSON() ([]byte, error) {
+	type alias ExecutionResult
+	return json.Marshal(struct {
+		alias
+		Duration int64 `json:"duration_ms"`
+	}{alias(r), r.Duration.Milliseconds()})
 }
 
 // Executor executes one scenario and reports its outcome.
