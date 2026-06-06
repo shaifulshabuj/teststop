@@ -5,12 +5,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/shaifulshabuj/teststop/internal/ai"
+	"github.com/shaifulshabuj/teststop/internal/executor"
 	"github.com/shaifulshabuj/teststop/internal/mandate"
 	"github.com/shaifulshabuj/teststop/internal/memory"
 	"github.com/shaifulshabuj/teststop/internal/reader"
@@ -19,12 +19,16 @@ import (
 )
 
 var (
-	runPath      string
-	runDepth     string
-	runOutput    string
-	runThreshold int
-	runNoColor   bool
-	runQuiet     bool
+	runPath        string
+	runDepth       string
+	runOutput      string
+	runThreshold   int
+	runNoColor     bool
+	runQuiet       bool
+	runTarget      string
+	runConcurrency int
+	runExecTimeout time.Duration
+	runMaxRetries  int
 )
 
 var runCmd = &cobra.Command{
@@ -42,6 +46,10 @@ func init() {
 	runCmd.Flags().IntVar(&runThreshold, "threshold", 80, "Confidence threshold (0-100)")
 	runCmd.Flags().BoolVar(&runNoColor, "no-color", false, "Disable ANSI color output (for agents)")
 	runCmd.Flags().BoolVar(&runQuiet, "quiet", false, "Minimal output")
+	runCmd.Flags().StringVar(&runTarget, "target", "", "Base URL of the running system to execute against (e.g. http://localhost:8080); empty = static validation only")
+	runCmd.Flags().IntVar(&runConcurrency, "concurrency", 4, "Max scenarios executed in parallel")
+	runCmd.Flags().DurationVar(&runExecTimeout, "exec-timeout", 10*time.Second, "Per-request execution timeout")
+	runCmd.Flags().IntVar(&runMaxRetries, "max-retries", 2, "Retries for transient HTTP execution failures")
 }
 
 func runCmdE(cmd *cobra.Command, args []string) error {
@@ -87,16 +95,26 @@ func runCmdE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("generate: %w", err)
 	}
 
-	// 7. Build run result.
-	result := buildRunResult(ctx, scenarios, mem, adapter.Name(), runDepth, start)
-	result.ExitCode = reporter.ExitCodeFor(result, float64(runThreshold)/100.0)
+	// 7. Execute scenarios (hybrid: HTTP/AI when --target set, else static validation).
+	execCfg := executor.Config{
+		Target:      runTarget,
+		Timeout:     runExecTimeout,
+		MaxRetries:  runMaxRetries,
+		Concurrency: runConcurrency,
+		Adapter:     adapter,
+	}
+	executions := executor.Run(cmd.Context(), execCfg, scenarios)
 
-	// 8. Update memory — in v0.1 we don't execute scenarios, so all areas get a pass.
-	for _, s := range scenarios {
-		if s.ConfidenceArea != "" {
-			mem.UpdateArea(s.ConfidenceArea, true)
+	// 8. Update memory from real execution outcomes.
+	for _, r := range executions {
+		if r.Area != "" {
+			mem.UpdateArea(r.Area, r.Passed)
 		}
 	}
+
+	// 9. Build run result (after memory update so reported state reflects this run).
+	result := buildRunResult(ctx, scenarios, executions, mem, adapter.Name(), runDepth, runTarget, start)
+	result.ExitCode = reporter.ExitCodeFor(result, float64(runThreshold)/100.0)
 
 	// 9. Retire eligible areas.
 	retired, err := mem.RetireEligibleAreas(absPath)
@@ -125,26 +143,39 @@ func runCmdE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// buildRunResult constructs the RunResult from the scenario list and memory state.
+// buildRunResult constructs the RunResult from the scenario list, execution
+// outcomes, and memory state.
 func buildRunResult(
 	ctx reader.ProjectContext,
 	scenarios []scenario.Scenario,
+	executions []executor.ExecutionResult,
 	mem *memory.Memory,
-	adapterName, depth string,
+	adapterName, depth, target string,
 	start time.Time,
 ) reporter.RunResult {
-	// Collect failures: critical-priority scenarios that have failure modes.
-	var failures []reporter.Failure
+	// Index scenario titles by ID for richer failure reporting.
+	titleByID := make(map[string]string, len(scenarios))
 	for _, s := range scenarios {
-		if len(s.FailureModes) > 0 && s.Priority == "critical" {
-			failures = append(failures, reporter.Failure{
-				ScenarioID:  s.ScenarioID,
-				Title:       s.Title,
-				Area:        s.ConfidenceArea,
-				Priority:    s.Priority,
-				Description: strings.Join(s.FailureModes, "; "),
-			})
+		titleByID[s.ScenarioID] = s.Title
+	}
+
+	// Collect failures from real execution outcomes.
+	var failures []reporter.Failure
+	for _, r := range executions {
+		if r.Passed {
+			continue
 		}
+		desc := r.ActualBehavior
+		if r.FailureReason != "" {
+			desc = r.FailureReason
+		}
+		failures = append(failures, reporter.Failure{
+			ScenarioID:  r.ScenarioID,
+			Title:       titleByID[r.ScenarioID],
+			Area:        r.Area,
+			Priority:    r.Priority,
+			Description: desc,
+		})
 	}
 
 	// Collect stable and volatile area names.
@@ -182,6 +213,8 @@ func buildRunResult(
 		Timestamp:       start,
 		Duration:        time.Since(start),
 		Scenarios:       scenarios,
+		Executions:      executions,
+		ExecSummary:     reporter.SummarizeExecutions(executions, target),
 		Failures:        failures,
 		StableAreas:     stableNames,
 		VolatileAreas:   volatileNames,

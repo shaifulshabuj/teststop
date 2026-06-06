@@ -22,12 +22,12 @@ func NewClaudeCLI() *ClaudeCLI {
 
 func (c *ClaudeCLI) Name() string { return "claude" }
 
-// GenerateScenarios sends the mandate to the claude CLI and parses the returned JSON.
-func (c *ClaudeCLI) GenerateScenarios(mandate string) ([]scenario.Scenario, error) {
+// Prompt sends an arbitrary instruction to the claude CLI and returns raw stdout.
+func (c *ClaudeCLI) Prompt(input string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	args := []string{"-p", mandate}
+	args := []string{"-p", input}
 
 	// Optional model override.
 	if model := os.Getenv("TESTSTOP_MODEL"); model != "" {
@@ -38,6 +38,14 @@ func (c *ClaudeCLI) GenerateScenarios(mandate string) ([]scenario.Scenario, erro
 	if result.Err != nil {
 		return nil, fmt.Errorf("claude: %w\nstderr: %s", result.Err, result.Stderr)
 	}
+	return result.Stdout, nil
+}
 
-	return ParseScenariosFromJSON(result.Stdout)
+// GenerateScenarios sends the mandate to the claude CLI and parses the returned JSON.
+func (c *ClaudeCLI) GenerateScenarios(mandate string) ([]scenario.Scenario, error) {
+	out, err := c.Prompt(mandate)
+	if err != nil {
+		return nil, err
+	}
+	return ParseScenariosFromJSON(out)
 }

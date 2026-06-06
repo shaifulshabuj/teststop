@@ -84,6 +84,22 @@ func WriteText(w io.Writer, result RunResult, noColor bool) error {
 	}
 	sb.WriteString("\n")
 
+	// Execution section
+	es := result.ExecSummary
+	target := es.Target
+	if target == "" {
+		target = "(none — static validation)"
+	}
+	sb.WriteString(fmt.Sprintf("%sEXECUTION%s\n", colorBold, colorReset))
+	sb.WriteString("─────────────────────────────\n")
+	sb.WriteString(fmt.Sprintf("  Target:  %s\n", target))
+	sb.WriteString(fmt.Sprintf(
+		"  Results: %s%d passed%s, %s%d failed%s of %d executed\n\n",
+		colorGreen, es.Passed, colorReset,
+		colorRed, es.Failed, colorReset,
+		es.Executed,
+	))
+
 	// Failures section
 	sb.WriteString(fmt.Sprintf("%sFAILURES (%d)%s\n", colorBold, len(result.Failures), colorReset))
 	sb.WriteString("─────────────────────────────\n")

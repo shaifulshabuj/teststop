@@ -490,8 +490,21 @@ from the schema causes a parse failure and the entire run result is lost.
     Examples: `auth`, `checkout`, `file-upload`, `user-profile`, `api/payments`
 17. `is_edge_case` — the JSON boolean `true` or the JSON boolean `false`. Not the
     string `"true"` or `"false"`. The actual unquoted JSON boolean value.
+18. `exec` — OPTIONAL, and the ONLY optional field. Include it ONLY when the
+    scenario maps cleanly to a single concrete HTTP request that a program can
+    replay deterministically. When you cannot express the scenario as one exact
+    request, OMIT `exec` entirely — do not guess, do not include an empty object.
+    A scenario with `exec` is executed deterministically; a scenario without it is
+    still fully valid and is executed by an AI driver or validated structurally.
+    When present, `exec` is an object with: `mode` (the string `"http"`),
+    `method` (HTTP verb), `path` (path appended to the system base URL, e.g.
+    `/api/login`), optional `headers` (object of string→string), optional `body`
+    (string), and `expected_status` (the integer HTTP status a correct system
+    returns for this scenario — use the status that proves the system handled the
+    adversarial input safely, e.g. `400` for rejected bad input, not `500`).
 
-**The exact schema — every scenario must match this:**
+**The exact schema — every scenario must match this** (the `exec` field shown
+last is optional; every other field is required):
 
 ```json
 {
@@ -514,7 +527,15 @@ from the schema causes a parse failure and the entire run result is lost.
   ],
   "priority": "critical",
   "confidence_area": "area-name",
-  "is_edge_case": true
+  "is_edge_case": true,
+  "exec": {
+    "mode": "http",
+    "method": "POST",
+    "path": "/api/login",
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"username\":\"' OR 1=1 --\",\"password\":\"x\"}",
+    "expected_status": 400
+  }
 }
 ```
 
