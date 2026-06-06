@@ -35,3 +35,4 @@ Thumbs.db
 # Docuflow
 .docuflow/
 /site
+.waymark/waymark.db
