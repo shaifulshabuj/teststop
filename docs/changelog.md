@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.2.0] — 2026-06-06
+
+teststop becomes a scenario **runner**, not just a scenario **generator**.
+
+### Added
+
+**Dynamic Scenario Execution (`internal/executor/`)**
+
+- `teststop run --target <url>` — execute generated scenarios against a running
+  system and feed real pass/fail outcomes into confidence memory
+- **Hybrid execution**, chosen per scenario:
+    - **HTTP** — deterministic `net/http` execution for scenarios carrying a
+      structured `exec` block (retries on transport errors and `5xx`,
+      per-request timeout, status-code judging)
+    - **AI-driven** — for prose-only scenarios when `--target` is set; the AI
+      performs the steps and returns a structured verdict
+    - **Static** — structural validation only (the no-`--target` default,
+      preserving v0.1 behavior)
+- Bounded, order-stable concurrent execution with context cancellation
+- New `run` flags: `--target`, `--concurrency` (4), `--exec-timeout` (10s),
+  `--max-retries` (2)
+
+**Scenario Schema (additive, non-breaking)**
+
+- Optional `exec` field on the scenario object (`mode`, `method`, `path`,
+  `headers`, `body`, `expected_status`, `command`, `expected_exit`). Legacy v0.1
+  JSON without `exec` parses unchanged.
+
+**AI Adapter**
+
+- `Prompt(input)` added to the adapter interface for AI-driven execution;
+  `GenerateScenarios` builds on it. Claude and Copilot adapters updated.
+
+**Reporting**
+
+- `RunResult` gains `executions` and `exec_summary`; text and Markdown reports
+  render an execution summary. Failures now derive from real execution outcomes.
+  `ExecutionResult.duration_ms` is emitted in true milliseconds.
+
+**Mandate**
+
+- `mandate/base.md` invites an optional `exec` block when a scenario maps cleanly
+  to a single concrete HTTP request.
+
+### Changed
+
+- The `run` pipeline updates confidence from **real** execution outcomes instead
+  of granting every area an automatic pass. A failed `critical` scenario now
+  yields exit code `2`.
+
+### Notes
+
+- A sandboxed (Apple Container) AI tester cannot reach the host's `localhost`;
+  use `TESTSTOP_SANDBOX=none` for local targets, or target a reachable
+  staging/production-like URL.
+
+---
+
 ## [v0.1.0] — 2025-05-21
 
 First public release of teststop.
@@ -71,11 +129,12 @@ First public release of teststop.
 
 ## Roadmap
 
-### v0.2 (planned)
+### v0.2 (in progress)
 
-- **Scenario executor** — actually run generated scenarios against a live system
+- ✅ **Scenario executor** — run generated scenarios against a live system _(shipped in v0.2.0)_
 - **Ollama adapter** — local model support via `TESTSTOP_CLI=ollama`
 - **`teststop watch`** — file-watching mode that re-runs on code changes
+- **Sandbox-network-aware execution** — run the executor inside the sandbox network
 
 ### v1.0 (planned)
 
@@ -86,4 +145,5 @@ First public release of teststop.
 
 ---
 
+[v0.2.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.2.0
 [v0.1.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.1.0

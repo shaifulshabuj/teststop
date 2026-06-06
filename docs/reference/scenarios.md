@@ -1,6 +1,6 @@
 # Scenario Schema
 
-The scenario schema is the **stable JSON contract** between teststop and any system that consumes its output. It is locked after v0.1 — changes are breaking changes.
+The scenario schema is the **stable JSON contract** between teststop and any system that consumes its output. The v0.1 core fields are locked — changes to them are breaking changes. The optional `exec` field was **added in v0.2** as a non-breaking, additive extension: legacy scenarios without it parse unchanged.
 
 ---
 
@@ -18,9 +18,22 @@ The scenario schema is the **stable JSON contract** between teststop and any sys
   "failure_modes": ["string"],
   "priority": "critical | high | medium | low",
   "confidence_area": "string",
-  "is_edge_case": true
+  "is_edge_case": true,
+  "exec": {
+    "mode": "http",
+    "method": "POST",
+    "path": "/api/login",
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"username\":\"\",\"password\":\"\"}",
+    "expected_status": 400
+  }
 }
 ```
+
+!!! note "`exec` is optional (v0.2)"
+    Every field except `exec` is required. The AI emits `exec` **only** when a
+    scenario maps cleanly to a single concrete request that can be replayed
+    deterministically. See [Execution](../guide/execution.md) for how it is used.
 
 ---
 
@@ -146,7 +159,10 @@ Specific ways the system could fail in this scenario. Each entry is one failure 
 ```
 
 !!! note "Exit code 2 trigger"
-    Critical scenarios with `failure_modes` trigger exit code `2` (critical failures) in the run result.
+    When a scenario is **executed** against a `--target`, a `critical`-priority
+    scenario that **fails** triggers exit code `2` (critical failures). Without a
+    `--target`, scenarios are validated structurally and report no execution
+    failures. See [Execution](../guide/execution.md).
 
 ---
 
@@ -184,6 +200,28 @@ Whether this scenario represents an unusual or boundary condition.
 
 `true` — the scenario tests behavior outside the happy path or at system limits.
 `false` — the scenario tests normal or common usage.
+
+---
+
+### `exec`
+
+**Type:** `object | undefined` — **optional, added in v0.2**
+
+Present only when the scenario maps to a single concrete, replayable request.
+When present, teststop's [HTTP executor](../guide/execution.md) runs the request
+deterministically against `--target`. When absent, the scenario is executed by
+the AI driver (if `--target` is set) or validated structurally.
+
+| Sub-field | Type | Description |
+|-----------|------|-------------|
+| `mode` | `"http" \| "cli"` | Execution mode |
+| `method` | `string` | HTTP verb (`GET`, `POST`, …) |
+| `path` | `string` | Path appended to the `--target` base URL |
+| `headers` | `object` | Request headers (string → string) |
+| `body` | `string` | Request body |
+| `expected_status` | `int` | Status a correct system returns; `0`/omitted means "any non-5xx passes" |
+| `command` | `string[]` | CLI argv (when `mode` is `cli`) |
+| `expected_exit` | `int` | Expected process exit code (CLI mode) |
 
 ---
 

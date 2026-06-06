@@ -28,6 +28,10 @@ teststop run [path] [flags]
 | `--threshold <n>` | `80` | Confidence threshold 0–100. Exit `0` when average confidence ≥ this. |
 | `--no-color` | `false` | Disable ANSI color output (useful for agents reading stdout) |
 | `--quiet` | `false` | Minimal output — prints only `OK`, `REVIEW`, `CRITICAL`, or `ERROR` |
+| `--target <url>` | _(none)_ | Base URL of a **running** system to execute scenarios against (v0.2). Empty = static validation only. |
+| `--concurrency <n>` | `4` | Max scenarios executed in parallel |
+| `--exec-timeout <dur>` | `10s` | Per-request execution timeout (e.g. `15s`, `500ms`) |
+| `--max-retries <n>` | `2` | Retries for transient HTTP execution failures (transport errors, 5xx) |
 
 ### Examples
 
@@ -49,7 +53,19 @@ teststop run --output json --no-color --quiet
 
 # Markdown report to stdout
 teststop run --output markdown
+
+# Execute scenarios against a running system (v0.2)
+TESTSTOP_SANDBOX=none teststop run --target http://localhost:8080
+
+# Tune execution against a staging instance
+teststop run --target https://staging.example.com \
+  --concurrency 8 --exec-timeout 15s --max-retries 3
 ```
+
+!!! tip "Execution vs. generation"
+    Without `--target`, `teststop run` only **generates and validates**
+    scenarios. With `--target`, it also **executes** them and feeds real
+    pass/fail into confidence memory. See [Execution](../guide/execution.md).
 
 ### Testing Depth
 

@@ -16,7 +16,8 @@ flowchart TD
     E -->|no container| G[AI CLI direct]
     F --> H[GenerateScenarios]
     G --> H
-    H --> I[memory.Update per area]
+    H --> X[executor.Run<br/>HTTP / AI / static]
+    X --> I[memory.Update from results]
     I --> J[memory.RetireEligible]
     J --> K[memory.Save]
     K --> L[reporter.Output]

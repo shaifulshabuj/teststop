@@ -135,6 +135,7 @@ nav:
   - Guide:
     - guide/index.md
     - How It Works: guide/how-it-works.md
+    - Execution: guide/execution.md
     - Memory System: guide/memory.md
     - AI Adapters: guide/ai-adapters.md
     - Sandbox Isolation: guide/sandbox.md

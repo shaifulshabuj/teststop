@@ -53,6 +53,9 @@ teststop run --path ./src
 # Control testing depth
 teststop run --depth aggressive   # light | normal | aggressive
 
+# Execute scenarios against a RUNNING system (v0.2)
+teststop run --target http://localhost:8080
+
 # Machine-readable output for AI agents
 teststop run --output json --no-color --quiet
 
@@ -65,6 +68,38 @@ teststop memory
 # Show the exact mandate sent to AI
 teststop mandate --show
 ```
+
+### Execute Against a Live System (v0.2)
+
+By default teststop **generates** adversarial scenarios and validates them
+structurally. Point it at a running system with `--target` and it will also
+**execute** those scenarios and feed the real pass/fail outcomes into
+confidence memory. teststop tests whatever is already running at that URL —
+local, staging, or a production-like instance — it never starts or manages the
+app itself (that stays your job).
+
+Execution is **hybrid**, chosen per scenario:
+
+| Condition | Executor | Behavior |
+|-----------|----------|----------|
+| Scenario has a structured `exec` block + `--target` set | **HTTP** | Deterministic `net/http` request, judged on status code |
+| `--target` set, prose-only scenario | **AI-driven** | The AI actually performs the steps against the target and returns a verdict |
+| No `--target` | **Static** | Structural validation only (default, ≈ v0.1 behavior) |
+
+```bash
+# Local app — run the AI tester directly (a sandboxed container can't reach host localhost)
+TESTSTOP_SANDBOX=none teststop run --target http://localhost:8080
+
+# Staging / prod-like URL — fully sandboxed AI tester works
+TESTSTOP_SANDBOX=required teststop run --target https://staging.example.com
+
+# Tune execution
+teststop run --target http://localhost:8080 \
+  --concurrency 8 --exec-timeout 15s --max-retries 3
+```
+
+A failed `critical` scenario sets exit code `2`. See
+[Execution](https://shaifulshabuj.github.io/teststop/guide/execution/) for details.
 
 ### Exit Codes (for AI agents)
 
@@ -145,4 +180,4 @@ See [MANDATE.md](./MANDATE.md) for contribution guidelines.
 
 ---
 
-*teststop v0.1 — Pre-release*
+*teststop v0.2 — Pre-release*

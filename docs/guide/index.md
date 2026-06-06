@@ -8,9 +8,17 @@ Deep dives into every component of teststop.
 
     ---
 
-    The full end-to-end pipeline: scan → mandate → generate → memory → report.
+    The full end-to-end pipeline: scan → mandate → generate → execute → memory → report.
 
     [:octicons-arrow-right-24: Read](how-it-works.md)
+
+-   :material-play-circle:{ .lg .middle } **Execution**
+
+    ---
+
+    Run scenarios against a live system with `--target`: HTTP, AI-driven, and static modes.
+
+    [:octicons-arrow-right-24: Read](execution.md)
 
 -   :material-memory:{ .lg .middle } **Memory System**
 
