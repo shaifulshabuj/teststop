@@ -68,9 +68,23 @@ jobs:
           mike list | grep -q "stable" || mike set-default --push latest
 
       # ── Manual workflow dispatch ────────────────────────────────────────────
+      # A release tag (v*) is deployed as a versioned release and promoted to the
+      # "stable" alias + default — this mirrors the release-event path and is the
+      # reliable way to publish versioned docs, since releases created by
+      # GoReleaser's GITHUB_TOKEN do not trigger the `release: published` event.
+      # Any other version string is deployed as-is (e.g. "dev").
       - name: Deploy manual version
         if: github.event_name == 'workflow_dispatch'
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          mike deploy --push "$VERSION"
-          echo "Deployed docs as version: $VERSION"
+          case "$VERSION" in
+            v*)
+              mike deploy --push --update-aliases "$VERSION" stable
+              mike set-default --push stable
+              echo "Deployed docs as $VERSION (stable, default)"
+              ;;
+            *)
+              mike deploy --push "$VERSION"
+              echo "Deployed docs as version: $VERSION"
+              ;;
+          esac
