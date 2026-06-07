@@ -162,6 +162,22 @@ func TestHTTPExecutor_RaceUnguardedFails(t *testing.T) {
 	}
 }
 
+func TestHTTPExecutor_RaceAllRejectedPasses(t *testing.T) {
+	// A stateless endpoint that rejects every concurrent request (e.g. auth with
+	// bad creds) has zero winners — no mutation happened, so it is NOT a race bug.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized) // 401 for all
+	}))
+	defer srv.Close()
+
+	ex := &HTTPExecutor{BaseURL: srv.URL, Timeout: 2 * time.Second}
+	res := ex.Execute(context.Background(), raceScenario(10, 401))
+
+	if !res.Passed {
+		t.Fatalf("all-rejected race should pass (0 winners), got fail: %s (%s)", res.FailureReason, res.ActualBehavior)
+	}
+}
+
 func TestHTTPExecutor_RaceServerErrorFails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

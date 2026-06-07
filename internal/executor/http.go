@@ -175,8 +175,14 @@ func (e *HTTPExecutor) executeRace(ctx context.Context, s scenario.Scenario) Exe
 	wg.Wait()
 	res.Duration = time.Since(start)
 
-	// Tally outcomes into success / rejected / server-error / transport-error.
-	var winners, rejected, serverErr, transportErr int
+	// A "winner" is any 2xx — a request that actually succeeded (mutated state).
+	// The race bug we detect is MORE THAN ONE winner: the guard let concurrent
+	// duplicates through. Zero or one winner with the rest cleanly rejected (4xx)
+	// is safe — the system serialized the duplicates. expected_status is NOT used
+	// to classify winners, so a rejection code (e.g. 401/409) never counts as a
+	// success; this avoids false positives on endpoints that legitimately reject
+	// every concurrent request (auth checks, etc.).
+	var winners, serverErr, transportErr, other int
 	counts := map[int]int{}
 	for _, o := range outcomes {
 		if o.err != nil {
@@ -185,16 +191,14 @@ func (e *HTTPExecutor) executeRace(ctx context.Context, s scenario.Scenario) Exe
 		}
 		counts[o.status]++
 		switch {
-		case isSuccess(o.status, s.Exec.ExpectedStatus):
+		case o.status >= 200 && o.status < 300:
 			winners++
 		case o.status >= 500:
 			serverErr++
 		case o.status >= 400:
-			rejected++
+			// clean rejection — expected for the losers
 		default:
-			// Non-success 2xx/3xx that doesn't match expected_status — treat as a
-			// winner-class anomaly so multiple "successes" are caught.
-			winners++
+			other++ // 1xx/3xx — unexpected for this kind of request
 		}
 	}
 
@@ -207,28 +211,17 @@ func (e *HTTPExecutor) executeRace(ctx context.Context, s scenario.Scenario) Exe
 	case serverErr > 0:
 		res.Passed = false
 		res.FailureReason = fmt.Sprintf("%d/%d requests returned a server error (5xx)", serverErr, n)
-	case winners == 1 && rejected == n-1:
-		res.Passed = true
 	case winners > 1:
 		res.Passed = false
-		res.FailureReason = fmt.Sprintf("race not guarded: %d concurrent requests succeeded, expected exactly 1", winners)
-	case winners == 0:
+		res.FailureReason = fmt.Sprintf("race not guarded: %d concurrent requests succeeded (2xx), expected at most one", winners)
+	case other > 0:
 		res.Passed = false
-		res.FailureReason = "no request succeeded — every concurrent request was rejected"
+		res.FailureReason = fmt.Sprintf("ambiguous: %d/%d responses were neither success (2xx) nor rejection (4xx)", other, n)
 	default:
-		res.Passed = false
-		res.FailureReason = fmt.Sprintf("ambiguous outcome: %d succeeded, %d rejected of %d", winners, rejected, n)
+		// 0 or 1 winner, remainder cleanly rejected — concurrency handled safely.
+		res.Passed = true
 	}
 	return res
-}
-
-// isSuccess reports whether status is in the success class for a scenario.
-// expected>0 means "exactly this status"; expected==0 means "any 2xx".
-func isSuccess(status, expected int) bool {
-	if expected > 0 {
-		return status == expected
-	}
-	return status >= 200 && status < 300
 }
 
 // histogram renders a compact "N×code" summary, sorted by status code.

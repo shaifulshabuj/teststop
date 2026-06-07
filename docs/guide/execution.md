@@ -70,8 +70,8 @@ defect count — run with `--target` to verify which (if any) actually break.
 
 A single request can't prove a system is safe against **double-submit** or
 **claim-the-last-item** races. Set `concurrency` in the `exec` block and teststop
-fires N identical requests simultaneously, asserting the guard yields **exactly
-one winner**:
+fires N identical requests simultaneously, asserting the guard lets **at most one
+winner** through:
 
 ```json
 {
@@ -85,12 +85,19 @@ one winner**:
 }
 ```
 
-- **Pass** — exactly one request returns the success status (`expected_status`, or
-  any 2xx if unset) and the rest are cleanly rejected with a 4xx (e.g. `409`).
-- **Fail** — more than one wins (the race is *not* guarded — the real bug), nobody
-  wins, or any request returns a `5xx` / transport error.
+A **winner** is any `2xx` response (a request that actually succeeded). The bug
+teststop detects is **more than one winner** — the guard let concurrent duplicates
+mutate state.
 
-`actual_behavior` reports the histogram, e.g. `10 concurrent POST …: 1×200, 9×409`.
+- **Pass** — at most one request wins (a `2xx`) and the rest are cleanly rejected
+  with a `4xx` (e.g. `409`). Zero winners is also safe (nothing was mutated — e.g.
+  an auth endpoint that correctly rejects every concurrent attempt).
+- **Fail** — more than one request wins (the race is *not* guarded — the real bug),
+  any request returns a `5xx`, or a request fails to complete (transport error).
+
+`expected_status` should be the winner's `2xx` code; it is **not** used to classify
+winners, so a rejection code never counts as a success. `actual_behavior` reports
+the histogram, e.g. `10 concurrent POST …: 1×200, 9×409`.
 
 !!! warning "Limitation: state setup"
     Race mode fires N identical requests against the target's **current state**. It
