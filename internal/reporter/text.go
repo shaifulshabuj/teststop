@@ -50,8 +50,14 @@ func WriteText(w io.Writer, result RunResult, noColor bool) error {
 		colorReset,
 	))
 
-	// Scenarios section
-	sb.WriteString(fmt.Sprintf("%sSCENARIOS (%d total)%s\n", colorBold, len(result.Scenarios), colorReset))
+	es := result.ExecSummary
+
+	// Scenarios section — "SCENARIOS" when executed, "PREDICTED RISKS" otherwise.
+	scenTitle := "SCENARIOS"
+	if !es.Executed {
+		scenTitle = "PREDICTED RISKS"
+	}
+	sb.WriteString(fmt.Sprintf("%s%s (%d total)%s\n", colorBold, scenTitle, len(result.Scenarios), colorReset))
 	sb.WriteString("─────────────────────────────\n")
 
 	// Build a set of failed scenario IDs for quick lookup
@@ -62,12 +68,14 @@ func WriteText(w io.Writer, result RunResult, noColor bool) error {
 
 	for _, sc := range result.Scenarios {
 		var marker, markerColor string
-		if failedIDs[sc.ScenarioID] {
-			marker = "✗"
-			markerColor = colorRed
-		} else {
-			marker = "✓"
-			markerColor = colorGreen
+		switch {
+		case !es.Executed:
+			// Predicted only — neutral marker, no pass/fail is implied.
+			marker, markerColor = "•", colorYellow
+		case failedIDs[sc.ScenarioID]:
+			marker, markerColor = "✗", colorRed
+		default:
+			marker, markerColor = "✓", colorGreen
 		}
 
 		priorityColor := ""
@@ -85,23 +93,30 @@ func WriteText(w io.Writer, result RunResult, noColor bool) error {
 	sb.WriteString("\n")
 
 	// Execution section
-	es := result.ExecSummary
-	target := es.Target
-	if target == "" {
-		target = "(none — static validation)"
-	}
 	sb.WriteString(fmt.Sprintf("%sEXECUTION%s\n", colorBold, colorReset))
 	sb.WriteString("─────────────────────────────\n")
-	sb.WriteString(fmt.Sprintf("  Target:  %s\n", target))
-	sb.WriteString(fmt.Sprintf(
-		"  Results: %s%d passed%s, %s%d failed%s of %d executed\n\n",
-		colorGreen, es.Passed, colorReset,
-		colorRed, es.Failed, colorReset,
-		es.Executed,
-	))
+	if es.Executed {
+		sb.WriteString(fmt.Sprintf("  Target:  %s\n", es.Target))
+		sb.WriteString(fmt.Sprintf(
+			"  Results: %s%d passed%s, %s%d failed%s of %d executed\n\n",
+			colorGreen, es.Passed, colorReset,
+			colorRed, es.Failed, colorReset,
+			es.Count,
+		))
+	} else {
+		sb.WriteString(fmt.Sprintf("  Target:  %s(none — predicted only, not executed)%s\n", colorDim, colorReset))
+		sb.WriteString(fmt.Sprintf(
+			"  %s%d scenarios predicted. Run with --target <url> to execute and verify.%s\n\n",
+			colorDim, es.Count, colorReset,
+		))
+	}
 
-	// Failures section
-	sb.WriteString(fmt.Sprintf("%sFAILURES (%d)%s\n", colorBold, len(result.Failures), colorReset))
+	// Failures / predicted-issues section
+	failTitle := "FAILURES"
+	if !es.Executed {
+		failTitle = "PREDICTED FAILURE MODES"
+	}
+	sb.WriteString(fmt.Sprintf("%s%s (%d)%s\n", colorBold, failTitle, len(result.Failures), colorReset))
 	sb.WriteString("─────────────────────────────\n")
 	if len(result.Failures) == 0 {
 		sb.WriteString(fmt.Sprintf("  %s(none)%s\n", colorDim, colorReset))
@@ -171,11 +186,22 @@ func WriteText(w io.Writer, result RunResult, noColor bool) error {
 		status = "CRITICAL FAILURES"
 	}
 
+	// Label the confidence honestly: it is PREDICTED when nothing was executed.
+	confLabel := "CONFIDENCE"
+	if !es.Executed {
+		confLabel = "PREDICTED CONFIDENCE"
+	}
 	sb.WriteString(fmt.Sprintf(
-		"%sCONFIDENCE: %s%.1f%%%s %s\n",
-		colorBold, confidenceColor, scorePercent, colorReset,
+		"%s%s: %s%.1f%%%s %s\n",
+		colorBold, confLabel, confidenceColor, scorePercent, colorReset,
 		status,
 	))
+	if !es.Executed {
+		sb.WriteString(fmt.Sprintf(
+			"%s(structural prediction only — no requests were executed; run with --target to verify)%s\n",
+			colorDim, colorReset,
+		))
+	}
 
 	out := sb.String()
 	if noColor {

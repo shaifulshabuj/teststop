@@ -22,6 +22,13 @@ func makeResult() reporter.RunResult {
 		ConfidenceScore: 0.85,
 		Depth:           "normal",
 		AdapterName:     "claude",
+		ExecSummary: reporter.ExecSummary{
+			Executed: true,
+			Count:    1,
+			Passed:   0,
+			Failed:   1,
+			Target:   "http://localhost:8080",
+		},
 		Scenarios: []scenario.Scenario{
 			{
 				ScenarioID:     "s-001",
@@ -100,6 +107,63 @@ func TestWriteMarkdown(t *testing.T) {
 	}
 	if !strings.Contains(out, "| Priority |") {
 		t.Error("markdown missing scenarios table")
+	}
+}
+
+// makePredictedResult is a run with no --target: predictions only, no failures.
+func makePredictedResult() reporter.RunResult {
+	r := makeResult()
+	r.ExecSummary = reporter.ExecSummary{Executed: false, Count: 1, Passed: 1, Failed: 0}
+	r.Failures = nil
+	return r
+}
+
+func TestWriteText_predictedFraming(t *testing.T) {
+	var buf bytes.Buffer
+	if err := reporter.WriteText(&buf, makePredictedResult(), true); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "PREDICTED RISKS") {
+		t.Error("predicted run should show PREDICTED RISKS header")
+	}
+	if !strings.Contains(out, "PREDICTED CONFIDENCE") {
+		t.Error("predicted run should label confidence as PREDICTED CONFIDENCE")
+	}
+	if !strings.Contains(out, "--target") {
+		t.Error("predicted run should tell the user to run with --target")
+	}
+	// Must not present a bare "CONFIDENCE:" as if verified.
+	if strings.Contains(out, "\nCONFIDENCE:") {
+		t.Error("predicted run must not show a verified CONFIDENCE line")
+	}
+}
+
+func TestWriteMarkdown_predictedFraming(t *testing.T) {
+	var buf bytes.Buffer
+	if err := reporter.WriteMarkdown(&buf, makePredictedResult()); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Predicted Risks") {
+		t.Error("predicted markdown should use 'Predicted Risks' heading")
+	}
+	if !strings.Contains(out, "predicted (no `--target`") {
+		t.Error("predicted markdown should state mode is predicted")
+	}
+}
+
+func TestExecSummary_JSONShape(t *testing.T) {
+	var buf bytes.Buffer
+	if err := reporter.WriteJSON(&buf, makeResult()); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"executed": true`) {
+		t.Error("JSON exec_summary should carry executed=true for an executed run")
+	}
+	if !strings.Contains(out, `"count": 1`) {
+		t.Error("JSON exec_summary should carry a count")
 	}
 }
 
