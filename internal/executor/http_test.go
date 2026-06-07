@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -107,6 +108,87 @@ func TestHTTPExecutor_RetryThenSucceed(t *testing.T) {
 	}
 	if got := calls.Load(); got < 2 {
 		t.Errorf("expected at least 2 calls (retry), got %d", got)
+	}
+}
+
+func raceScenario(n, expected int) scenario.Scenario {
+	return scenario.Scenario{
+		ScenarioID:     "race1",
+		ConfidenceArea: "actions/approve",
+		Priority:       scenario.PriorityCritical,
+		Exec: &scenario.ExecSpec{
+			Mode:           scenario.ExecHTTP,
+			Method:         http.MethodPost,
+			Path:           "/approve",
+			ExpectedStatus: expected,
+			Concurrency:    n,
+		},
+	}
+}
+
+func TestHTTPExecutor_RaceGuardedOneWinner(t *testing.T) {
+	var claimed atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if claimed.CompareAndSwap(false, true) {
+			w.WriteHeader(http.StatusOK) // exactly one winner
+			return
+		}
+		w.WriteHeader(http.StatusConflict) // 409 for the rest
+	}))
+	defer srv.Close()
+
+	ex := &HTTPExecutor{BaseURL: srv.URL, Timeout: 2 * time.Second}
+	res := ex.Execute(context.Background(), raceScenario(10, 200))
+
+	if !res.Passed {
+		t.Fatalf("guarded race should pass, got fail: %s (%s)", res.FailureReason, res.ActualBehavior)
+	}
+}
+
+func TestHTTPExecutor_RaceUnguardedFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK) // no guard — everyone wins
+	}))
+	defer srv.Close()
+
+	ex := &HTTPExecutor{BaseURL: srv.URL, Timeout: 2 * time.Second}
+	res := ex.Execute(context.Background(), raceScenario(8, 200))
+
+	if res.Passed {
+		t.Fatal("unguarded race should fail (multiple winners), got pass")
+	}
+	if !strings.Contains(res.FailureReason, "race not guarded") {
+		t.Errorf("expected 'race not guarded' reason, got: %s", res.FailureReason)
+	}
+}
+
+func TestHTTPExecutor_RaceAllRejectedPasses(t *testing.T) {
+	// A stateless endpoint that rejects every concurrent request (e.g. auth with
+	// bad creds) has zero winners — no mutation happened, so it is NOT a race bug.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized) // 401 for all
+	}))
+	defer srv.Close()
+
+	ex := &HTTPExecutor{BaseURL: srv.URL, Timeout: 2 * time.Second}
+	res := ex.Execute(context.Background(), raceScenario(10, 401))
+
+	if !res.Passed {
+		t.Fatalf("all-rejected race should pass (0 winners), got fail: %s (%s)", res.FailureReason, res.ActualBehavior)
+	}
+}
+
+func TestHTTPExecutor_RaceServerErrorFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	ex := &HTTPExecutor{BaseURL: srv.URL, Timeout: 2 * time.Second}
+	res := ex.Execute(context.Background(), raceScenario(5, 200))
+
+	if res.Passed {
+		t.Fatal("server errors in a race should fail")
 	}
 }
 

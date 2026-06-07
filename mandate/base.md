@@ -502,6 +502,14 @@ from the schema causes a parse failure and the entire run result is lost.
     (string), and `expected_status` (the integer HTTP status a correct system
     returns for this scenario — use the status that proves the system handled the
     adversarial input safely, e.g. `400` for rejected bad input, not `500`).
+    For a **concurrency race** (double-submit, two users acting at once,
+    claim-the-last-item), also set `concurrency` to the number of simultaneous
+    identical requests to fire (e.g. `10`) and set `expected_status` to the status
+    the single *winning* request returns (a `2xx`, e.g. `200`). The system passes
+    if at most one request wins and the rest are cleanly rejected with a 4xx such
+    as `409`; more than one winner is the race bug. Use `concurrency` only when
+    firing the same request N times at once is a meaningful test from the system's
+    current state.
 
 **The exact schema — every scenario must match this** (the `exec` field shown
 last is optional; every other field is required):

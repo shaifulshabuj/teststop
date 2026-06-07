@@ -16,17 +16,29 @@ func WriteMarkdown(w io.Writer, result RunResult) error {
 	// Title
 	sb.WriteString(fmt.Sprintf("# teststop Report — %s\n\n", result.ProjectName))
 
+	es := result.ExecSummary
+
 	// Metadata
 	sb.WriteString(fmt.Sprintf("**Date:** %s\n", result.Timestamp.Format("2006-01-02 15:04:05")))
 	sb.WriteString(fmt.Sprintf("**Duration:** %dms\n", result.Duration.Milliseconds()))
 	sb.WriteString(fmt.Sprintf("**System:** %s (%s)\n", result.SystemType, result.Language))
-	sb.WriteString(fmt.Sprintf("**Confidence:** %.1f%%\n", result.ConfidenceScore*100))
+	if es.Executed {
+		sb.WriteString(fmt.Sprintf("**Mode:** executed against %s\n", es.Target))
+		sb.WriteString(fmt.Sprintf("**Confidence:** %.1f%%\n", result.ConfidenceScore*100))
+	} else {
+		sb.WriteString("**Mode:** predicted (no `--target` — structural only, not executed)\n")
+		sb.WriteString(fmt.Sprintf("**Predicted confidence:** %.1f%% _(run with `--target` to verify)_\n", result.ConfidenceScore*100))
+	}
 
 	exitMeaning := exitCodeMeaning(result.ExitCode)
 	sb.WriteString(fmt.Sprintf("**Exit Code:** %d (%s)\n\n", result.ExitCode, exitMeaning))
 
-	// Scenarios table
-	sb.WriteString(fmt.Sprintf("## Scenarios (%d total)\n\n", len(result.Scenarios)))
+	// Scenarios table — "Scenarios" when executed, "Predicted Risks" otherwise.
+	scenTitle := "Scenarios"
+	if !es.Executed {
+		scenTitle = "Predicted Risks"
+	}
+	sb.WriteString(fmt.Sprintf("## %s (%d total)\n\n", scenTitle, len(result.Scenarios)))
 	sb.WriteString("| Priority | Title | Area | Edge Case |\n")
 	sb.WriteString("|----------|-------|------|-----------|\n")
 	for _, sc := range result.Scenarios {
@@ -45,20 +57,27 @@ func WriteMarkdown(w io.Writer, result RunResult) error {
 	sb.WriteString("\n")
 
 	// Execution section
-	es := result.ExecSummary
-	target := es.Target
-	if target == "" {
-		target = "_none — static validation_"
-	}
 	sb.WriteString("## Execution\n\n")
-	sb.WriteString(fmt.Sprintf("- **Target:** %s\n", target))
-	sb.WriteString(fmt.Sprintf(
-		"- **Results:** %d passed, %d failed of %d executed\n\n",
-		es.Passed, es.Failed, es.Executed,
-	))
+	if es.Executed {
+		sb.WriteString(fmt.Sprintf("- **Target:** %s\n", es.Target))
+		sb.WriteString(fmt.Sprintf(
+			"- **Results:** %d passed, %d failed of %d executed\n\n",
+			es.Passed, es.Failed, es.Count,
+		))
+	} else {
+		sb.WriteString("- **Target:** _none — predicted only, not executed_\n")
+		sb.WriteString(fmt.Sprintf(
+			"- **Results:** %d scenarios predicted. Run with `--target <url>` to execute and verify.\n\n",
+			es.Count,
+		))
+	}
 
-	// Failures section
-	sb.WriteString(fmt.Sprintf("## Failures (%d)\n\n", len(result.Failures)))
+	// Failures / predicted-issues section
+	failTitle := "Failures"
+	if !es.Executed {
+		failTitle = "Predicted Failure Modes"
+	}
+	sb.WriteString(fmt.Sprintf("## %s (%d)\n\n", failTitle, len(result.Failures)))
 	if len(result.Failures) == 0 {
 		sb.WriteString("_(none)_\n\n")
 	}

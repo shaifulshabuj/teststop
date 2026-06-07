@@ -117,6 +117,17 @@ func TestParseScenarios_execRoundTrips(t *testing.T) {
 	}
 }
 
+func TestParseScenarios_execConcurrency(t *testing.T) {
+	raw := []byte(`[{"scenario_id":"s1","title":"t","user_perspective":"u","preconditions":[],"steps":["a"],"chaos_factors":[],"expected_behavior":"e","failure_modes":[],"priority":"critical","confidence_area":"actions","is_edge_case":true,"exec":{"mode":"http","method":"POST","path":"/approve","expected_status":200,"concurrency":10}}]`)
+	scenarios, err := ai.ParseScenariosFromJSON(raw)
+	if err != nil {
+		t.Fatalf("exec concurrency JSON should parse: %v", err)
+	}
+	if e := scenarios[0].Exec; e == nil || e.Concurrency != 10 {
+		t.Errorf("expected concurrency 10, got %+v", e)
+	}
+}
+
 func TestParseScenarios_multipleScenarios(t *testing.T) {
 	raw := []byte(`[
   {"scenario_id":"a1","title":"A","user_perspective":"u","preconditions":[],"steps":[],"chaos_factors":[],"expected_behavior":"e","failure_modes":[],"priority":"critical","confidence_area":"auth","is_edge_case":true},

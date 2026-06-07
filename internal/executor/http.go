@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shaifulshabuj/teststop/pkg/scenario"
@@ -33,6 +35,11 @@ func (e *HTTPExecutor) Execute(ctx context.Context, s scenario.Scenario) Executi
 		res.FailureReason = "http executor: scenario has no exec block"
 		res.Duration = time.Since(start)
 		return res
+	}
+
+	// Concurrency race mode: fire N identical requests at once, expect one winner.
+	if s.Exec.Concurrency > 1 {
+		return e.executeRace(ctx, s)
 	}
 
 	method := s.Exec.Method
@@ -111,6 +118,127 @@ func (e *HTTPExecutor) Execute(ctx context.Context, s scenario.Scenario) Executi
 		}
 	}
 	return res
+}
+
+// executeRace fires Exec.Concurrency identical requests simultaneously and judges
+// whether the system yielded exactly one winner with the rest cleanly rejected.
+// This is the deterministic test for race guards (double-submit, claim-last-item).
+func (e *HTTPExecutor) executeRace(ctx context.Context, s scenario.Scenario) ExecutionResult {
+	start := time.Now()
+	res := ExecutionResult{
+		ScenarioID: s.ScenarioID,
+		Area:       s.ConfidenceArea,
+		Priority:   s.Priority,
+		Mode:       ModeHTTP,
+	}
+
+	n := s.Exec.Concurrency
+	method := s.Exec.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+	url := joinURL(e.BaseURL, s.Exec.Path)
+	client := &http.Client{Timeout: e.Timeout}
+
+	type outcome struct {
+		status int
+		err    error
+	}
+	outcomes := make([]outcome, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			var body io.Reader
+			if s.Exec.Body != "" {
+				body = strings.NewReader(s.Exec.Body)
+			}
+			req, err := http.NewRequestWithContext(ctx, method, url, body)
+			if err != nil {
+				outcomes[i] = outcome{err: err}
+				return
+			}
+			for k, v := range s.Exec.Headers {
+				req.Header.Set(k, v)
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				outcomes[i] = outcome{err: err}
+				return
+			}
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+			resp.Body.Close()
+			outcomes[i] = outcome{status: resp.StatusCode}
+		}(i)
+	}
+	wg.Wait()
+	res.Duration = time.Since(start)
+
+	// A "winner" is any 2xx — a request that actually succeeded (mutated state).
+	// The race bug we detect is MORE THAN ONE winner: the guard let concurrent
+	// duplicates through. Zero or one winner with the rest cleanly rejected (4xx)
+	// is safe — the system serialized the duplicates. expected_status is NOT used
+	// to classify winners, so a rejection code (e.g. 401/409) never counts as a
+	// success; this avoids false positives on endpoints that legitimately reject
+	// every concurrent request (auth checks, etc.).
+	var winners, serverErr, transportErr, other int
+	counts := map[int]int{}
+	for _, o := range outcomes {
+		if o.err != nil {
+			transportErr++
+			continue
+		}
+		counts[o.status]++
+		switch {
+		case o.status >= 200 && o.status < 300:
+			winners++
+		case o.status >= 500:
+			serverErr++
+		case o.status >= 400:
+			// clean rejection — expected for the losers
+		default:
+			other++ // 1xx/3xx — unexpected for this kind of request
+		}
+	}
+
+	res.ActualBehavior = fmt.Sprintf("%d concurrent %s %s: %s", n, method, url, histogram(counts, transportErr))
+
+	switch {
+	case transportErr > 0:
+		res.Passed = false
+		res.FailureReason = fmt.Sprintf("%d/%d requests failed to complete (transport error)", transportErr, n)
+	case serverErr > 0:
+		res.Passed = false
+		res.FailureReason = fmt.Sprintf("%d/%d requests returned a server error (5xx)", serverErr, n)
+	case winners > 1:
+		res.Passed = false
+		res.FailureReason = fmt.Sprintf("race not guarded: %d concurrent requests succeeded (2xx), expected at most one", winners)
+	case other > 0:
+		res.Passed = false
+		res.FailureReason = fmt.Sprintf("ambiguous: %d/%d responses were neither success (2xx) nor rejection (4xx)", other, n)
+	default:
+		// 0 or 1 winner, remainder cleanly rejected — concurrency handled safely.
+		res.Passed = true
+	}
+	return res
+}
+
+// histogram renders a compact "N×code" summary, sorted by status code.
+func histogram(counts map[int]int, transportErr int) string {
+	codes := make([]int, 0, len(counts))
+	for c := range counts {
+		codes = append(codes, c)
+	}
+	sort.Ints(codes)
+	parts := make([]string, 0, len(codes)+1)
+	for _, c := range codes {
+		parts = append(parts, fmt.Sprintf("%d×%d", counts[c], c))
+	}
+	if transportErr > 0 {
+		parts = append(parts, fmt.Sprintf("%d×error", transportErr))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // judgeStatus returns true if the response status is acceptable.

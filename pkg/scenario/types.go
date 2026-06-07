@@ -32,6 +32,11 @@ type ExecSpec struct {
 	ExpectedStatus int               `json:"expected_status,omitempty"` // 0 = "any non-5xx is a pass"
 	Command        []string          `json:"command,omitempty"`         // CLI mode argv
 	ExpectedExit   int               `json:"expected_exit,omitempty"`   // CLI mode expected exit code
+
+	// Concurrency, when > 1, fires N identical HTTP requests simultaneously and
+	// asserts the system yields exactly one winner (the rest cleanly rejected).
+	// Used to verify race guards (double-submit, claim-the-last-item, etc.).
+	Concurrency int `json:"concurrency,omitempty"`
 }
 
 // ExecMode values for ExecSpec.Mode.

@@ -25,3 +25,6 @@ release:
   github:
     owner: shaifulshabuj
     name: teststop
+  # Tags containing a pre-release suffix (e.g. v0.3.0-rc.1) are marked as
+  # GitHub pre-releases automatically.
+  prerelease: auto

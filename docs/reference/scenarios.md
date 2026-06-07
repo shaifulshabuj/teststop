@@ -220,6 +220,7 @@ the AI driver (if `--target` is set) or validated structurally.
 | `headers` | `object` | Request headers (string → string) |
 | `body` | `string` | Request body |
 | `expected_status` | `int` | Status a correct system returns; `0`/omitted means "any non-5xx passes" |
+| `concurrency` | `int` | When `> 1`, fire N identical requests simultaneously and assert **at most one** wins (a 2xx); more than one winner is the race bug. |
 | `command` | `string[]` | CLI argv (when `mode` is `cli`) |
 | `expected_exit` | `int` | Expected process exit code (CLI mode) |
 

@@ -30,16 +30,22 @@ type RunResult struct {
 
 // ExecSummary aggregates execution outcomes for quick scanning.
 type ExecSummary struct {
-	Executed int `json:"executed"`
-	Passed   int `json:"passed"`
-	Failed   int `json:"failed"`
-	// Target is the live system URL executed against, or "" if static-only.
+	// Executed is true when scenarios were run against a live --target. When
+	// false the run only PREDICTED risks (structural validation), and the
+	// pass/fail counts and confidence reflect predictions, not verified behavior.
+	Executed bool `json:"executed"`
+	// Count is the number of scenarios processed.
+	Count  int `json:"count"`
+	Passed int `json:"passed"`
+	Failed int `json:"failed"`
+	// Target is the live system URL executed against, or "" if predicted-only.
 	Target string `json:"target,omitempty"`
 }
 
-// SummarizeExecutions tallies execution results into an ExecSummary.
+// SummarizeExecutions tallies execution results into an ExecSummary. A run counts
+// as executed when it ran against a live target.
 func SummarizeExecutions(execs []executor.ExecutionResult, target string) ExecSummary {
-	s := ExecSummary{Executed: len(execs), Target: target}
+	s := ExecSummary{Executed: target != "", Count: len(execs), Target: target}
 	for _, e := range execs {
 		if e.Passed {
 			s.Passed++

@@ -101,6 +101,11 @@ teststop run --target http://localhost:8080 \
   --concurrency 8 --exec-timeout 15s --max-retries 3
 ```
 
+For **race conditions** (double-submit, claim-the-last-item), a scenario's `exec`
+block can set `concurrency: N` — teststop fires N identical requests at once and
+asserts exactly one wins. Runs **without** `--target` are clearly labelled
+**predicted** (a risk surface), not verified failures.
+
 A failed `critical` scenario sets exit code `2`. See
 [Execution](https://shaifulshabuj.github.io/teststop/guide/execution/) for details.
 
