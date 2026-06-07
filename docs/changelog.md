@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.2.1] — 2026-06-07
+
+### Added
+
+- `teststop version` command and `--version` / `-v` flags, reporting the
+  GoReleaser-injected version, commit, build date, Go version, and os/arch. For
+  `go install` builds the version is recovered from the module build info.
+- `--help` now organizes commands into **Core** and **Meta** groups and includes
+  a usage examples section.
+
+### Changed
+
+- GoReleaser now injects `main.commit` and `main.date` alongside `main.version`.
+
+---
+
 ## [v0.2.0] — 2026-06-06
 
 teststop becomes a scenario **runner**, not just a scenario **generator**.
@@ -145,5 +161,6 @@ First public release of teststop.
 
 ---
 
+[v0.2.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.2.1
 [v0.2.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.2.0
 [v0.1.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.1.0

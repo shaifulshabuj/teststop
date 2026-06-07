@@ -198,6 +198,34 @@ teststop mandate --show --path ./api --depth aggressive
 
 ---
 
+## `teststop version`
+
+Print the version and build information.
+
+```
+teststop version
+```
+
+```console
+$ teststop version
+teststop v0.2.1
+  commit:  a1b2c3d
+  built:   2026-06-07T09:00:00Z
+  go:      go1.26.3
+  os/arch: darwin/arm64
+```
+
+The version is injected at release time by GoReleaser. For `go install` builds it
+is recovered from the module build info, so it still reports the installed tag.
+The same value is available via the `--version` / `-v` flag:
+
+```bash
+teststop --version    # teststop v0.2.1
+teststop -v           # teststop v0.2.1
+```
+
+---
+
 ## Global Flags
 
 These flags apply to all commands:

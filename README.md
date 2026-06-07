@@ -67,6 +67,9 @@ teststop memory
 
 # Show the exact mandate sent to AI
 teststop mandate --show
+
+# Show version and build info
+teststop version          # or: teststop --version / teststop -v
 ```
 
 ### Execute Against a Live System (v0.2)
