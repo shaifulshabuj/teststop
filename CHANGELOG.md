@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.3.0] — 2026-06-07
+
+### Added
+
+- **Concurrency exec mode** (#43) — `ExecSpec.concurrency`: when `> 1`, the HTTP
+  executor fires N identical requests simultaneously and asserts the guard yields
+  exactly one winner (the rest cleanly rejected). Deterministically verifies race
+  guards like double-submit and claim-the-last-item. The mandate now invites the
+  AI to emit `concurrency` for race scenarios.
+
+### Changed
+
+- **Reporter honesty** (#42) — runs without `--target` are now clearly labelled as
+  **predicted** (risk surface), not executed. Text/Markdown reports show
+  "PREDICTED RISKS" / "PREDICTED CONFIDENCE" with a caveat to run `--target` to
+  verify; executed runs keep the verified ✓/✗ + CONFIDENCE framing.
+- `exec_summary` JSON now carries `executed` (bool) and `count` (int) — previously
+  `executed` held the count. Agents should read `executed` as "was this run
+  executed against a live target."
+
+### Notes
+
+- Concurrency mode tests guards reachable from the target's current state;
+  scenarios needing per-request setup remain future work.
+
+---
+
 ## [v0.2.1] — 2026-06-07
 
 ### Added
@@ -104,6 +131,7 @@ First public release of teststop.
 
 ---
 
+[v0.3.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.3.0
 [v0.2.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.2.1
 [v0.2.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.2.0
 [v0.1.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.1.0

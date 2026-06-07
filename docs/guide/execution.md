@@ -52,6 +52,52 @@ AI path covers open-ended, chaos-heavy scenarios that can't be reduced to one
 request. See the [`exec` field](../reference/scenarios.md#exec) for the structured
 contract.
 
+### Predicted vs executed
+
+This distinction matters when you read the results:
+
+- **Predicted** (no `--target`) — teststop generates scenarios and validates them
+  structurally. Nothing is sent to a system. The report is a **risk surface**, and
+  the confidence is labelled **PREDICTED** — it is not evidence of correctness.
+- **Executed** (with `--target`) — scenarios are run and judged on real responses.
+  Failures are observed, not guessed, and confidence reflects verified behavior.
+
+The JSON output makes this explicit via `exec_summary.executed`. Treat a predicted
+run as a checklist of "things that could break a system like this," not a
+defect count — run with `--target` to verify which (if any) actually break.
+
+## Concurrency races
+
+A single request can't prove a system is safe against **double-submit** or
+**claim-the-last-item** races. Set `concurrency` in the `exec` block and teststop
+fires N identical requests simultaneously, asserting the guard yields **exactly
+one winner**:
+
+```json
+{
+  "exec": {
+    "mode": "http",
+    "method": "POST",
+    "path": "/actions/42/approve",
+    "expected_status": 200,
+    "concurrency": 10
+  }
+}
+```
+
+- **Pass** — exactly one request returns the success status (`expected_status`, or
+  any 2xx if unset) and the rest are cleanly rejected with a 4xx (e.g. `409`).
+- **Fail** — more than one wins (the race is *not* guarded — the real bug), nobody
+  wins, or any request returns a `5xx` / transport error.
+
+`actual_behavior` reports the histogram, e.g. `10 concurrent POST …: 1×200, 9×409`.
+
+!!! warning "Limitation: state setup"
+    Race mode fires N identical requests against the target's **current state**. It
+    is ideal for guards that don't need per-request setup (create-with-unique-key,
+    claim-last-item). Scenarios that must first seed state (approve an action that
+    must already be pending) need a setup phase that teststop does not yet provide.
+
 ---
 
 ## Flags
@@ -102,7 +148,7 @@ TESTSTOP_SANDBOX=none teststop run --path ./sample-api \
 
 ```json
 {
-  "exec_summary": { "executed": 5, "passed": 4, "failed": 1, "target": "http://localhost:8099" },
+  "exec_summary": { "executed": true, "count": 5, "passed": 4, "failed": 1, "target": "http://localhost:8099" },
   "executions": [
     {
       "scenario_id": "login-empty-whitespace-username",
