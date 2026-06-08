@@ -62,26 +62,34 @@ func TestAIExecutor_ParsesVerdictFailWithFences(t *testing.T) {
 	}
 }
 
-func TestAIExecutor_AdapterErrorIsFailure(t *testing.T) {
-	fa := &fakeAdapter{err: errors.New("cli not found")}
+func TestAIExecutor_AdapterErrorIsSkipped(t *testing.T) {
+	// An AI CLI error (e.g. exit 1 on rate-limit exhaustion) is infrastructure,
+	// not a verdict — it must be marked skipped, not failed.
+	fa := &fakeAdapter{err: errors.New("claude: exit status 1\nstderr: ")}
 	ex := &AIExecutor{Adapter: fa, Target: "http://localhost:9999"}
 	res := ex.Execute(context.Background(), aiScenario())
 
+	if !res.Skipped {
+		t.Fatal("adapter error should be marked Skipped")
+	}
 	if res.Passed {
-		t.Fatal("expected fail on adapter error")
+		t.Error("skipped result should not be passed")
 	}
 	if res.FailureReason == "" {
-		t.Error("expected failure reason")
+		t.Error("expected failure reason carried through for debugging")
 	}
 }
 
-func TestAIExecutor_UnparseableVerdictIsFailure(t *testing.T) {
+func TestAIExecutor_UnparseableVerdictIsSkipped(t *testing.T) {
 	fa := &fakeAdapter{out: []byte("the system seems fine to me")}
 	ex := &AIExecutor{Adapter: fa, Target: "http://localhost:9999"}
 	res := ex.Execute(context.Background(), aiScenario())
 
+	if !res.Skipped {
+		t.Fatal("unparseable verdict should be marked Skipped, not failed")
+	}
 	if res.Passed {
-		t.Fatal("expected fail on unparseable verdict")
+		t.Error("skipped result should not be passed")
 	}
 }
 

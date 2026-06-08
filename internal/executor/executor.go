@@ -35,10 +35,16 @@ const (
 
 // ExecutionResult is the outcome of executing a single scenario.
 type ExecutionResult struct {
-	ScenarioID     string        `json:"scenario_id"`
-	Area           string        `json:"area"`
-	Mode           string        `json:"mode"` // http | ai | static
-	Passed         bool          `json:"passed"`
+	ScenarioID string `json:"scenario_id"`
+	Area       string `json:"area"`
+	Mode       string `json:"mode"` // http | ai | static
+	Passed     bool   `json:"passed"`
+	// Skipped is true when no verdict could be obtained for an infrastructure
+	// reason (AI CLI error/rate limit, unparseable verdict, cancellation) rather
+	// than the system under test misbehaving. Skipped results are excluded from
+	// confidence scoring, failures, and the exit code — they are NOT a verdict
+	// about the target.
+	Skipped        bool          `json:"skipped,omitempty"`
 	ActualBehavior string        `json:"actual_behavior"`
 	FailureReason  string        `json:"failure_reason,omitempty"`
 	Priority       string        `json:"priority"`
@@ -108,12 +114,14 @@ func Run(ctx context.Context, cfg Config, scenarios []scenario.Scenario) []Execu
 		case <-ctx.Done():
 			// Mark remaining scenarios as not executed due to cancellation.
 			results[i] = ExecutionResult{
-				ScenarioID:    s.ScenarioID,
-				Area:          s.ConfidenceArea,
-				Priority:      s.Priority,
-				Mode:          ModeStatic,
-				Passed:        false,
-				FailureReason: "execution cancelled: " + ctx.Err().Error(),
+				ScenarioID:     s.ScenarioID,
+				Area:           s.ConfidenceArea,
+				Priority:       s.Priority,
+				Mode:           ModeStatic,
+				Passed:         false,
+				Skipped:        true,
+				ActualBehavior: "not executed",
+				FailureReason:  "execution cancelled: " + ctx.Err().Error(),
 			}
 			done <- i
 			continue

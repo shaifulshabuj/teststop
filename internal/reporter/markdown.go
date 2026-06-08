@@ -60,10 +60,17 @@ func WriteMarkdown(w io.Writer, result RunResult) error {
 	sb.WriteString("## Execution\n\n")
 	if es.Executed {
 		sb.WriteString(fmt.Sprintf("- **Target:** %s\n", es.Target))
-		sb.WriteString(fmt.Sprintf(
-			"- **Results:** %d passed, %d failed of %d executed\n\n",
-			es.Passed, es.Failed, es.Count,
-		))
+		if es.Skipped > 0 {
+			sb.WriteString(fmt.Sprintf(
+				"- **Results:** %d passed, %d failed, %d skipped (infrastructure error, not counted) of %d executed\n\n",
+				es.Passed, es.Failed, es.Skipped, es.Count,
+			))
+		} else {
+			sb.WriteString(fmt.Sprintf(
+				"- **Results:** %d passed, %d failed of %d executed\n\n",
+				es.Passed, es.Failed, es.Count,
+			))
+		}
 	} else {
 		sb.WriteString("- **Target:** _none — predicted only, not executed_\n")
 		sb.WriteString(fmt.Sprintf(

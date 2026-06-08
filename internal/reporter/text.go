@@ -98,11 +98,18 @@ func WriteText(w io.Writer, result RunResult, noColor bool) error {
 	if es.Executed {
 		sb.WriteString(fmt.Sprintf("  Target:  %s\n", es.Target))
 		sb.WriteString(fmt.Sprintf(
-			"  Results: %s%d passed%s, %s%d failed%s of %d executed\n\n",
+			"  Results: %s%d passed%s, %s%d failed%s of %d executed\n",
 			colorGreen, es.Passed, colorReset,
 			colorRed, es.Failed, colorReset,
 			es.Count,
 		))
+		if es.Skipped > 0 {
+			sb.WriteString(fmt.Sprintf(
+				"  %s%d skipped (infrastructure error — e.g. AI rate limit; not counted)%s\n",
+				colorYellow, es.Skipped, colorReset,
+			))
+		}
+		sb.WriteString("\n")
 	} else {
 		sb.WriteString(fmt.Sprintf("  Target:  %s(none — predicted only, not executed)%s\n", colorDim, colorReset))
 		sb.WriteString(fmt.Sprintf(

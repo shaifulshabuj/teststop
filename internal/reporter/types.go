@@ -34,22 +34,30 @@ type ExecSummary struct {
 	// false the run only PREDICTED risks (structural validation), and the
 	// pass/fail counts and confidence reflect predictions, not verified behavior.
 	Executed bool `json:"executed"`
-	// Count is the number of scenarios processed.
+	// Count is the number of scenarios processed (passed + failed + skipped).
 	Count  int `json:"count"`
 	Passed int `json:"passed"`
 	Failed int `json:"failed"`
+	// Skipped counts scenarios with no verdict due to an infrastructure error
+	// (AI CLI error/rate limit, unparseable verdict). They do not affect
+	// confidence or the exit code.
+	Skipped int `json:"skipped,omitempty"`
 	// Target is the live system URL executed against, or "" if predicted-only.
 	Target string `json:"target,omitempty"`
 }
 
 // SummarizeExecutions tallies execution results into an ExecSummary. A run counts
-// as executed when it ran against a live target.
+// as executed when it ran against a live target. Skipped (infrastructure) results
+// are tallied separately and never counted as passed or failed.
 func SummarizeExecutions(execs []executor.ExecutionResult, target string) ExecSummary {
 	s := ExecSummary{Executed: target != "", Count: len(execs), Target: target}
 	for _, e := range execs {
-		if e.Passed {
+		switch {
+		case e.Skipped:
+			s.Skipped++
+		case e.Passed:
 			s.Passed++
-		} else {
+		default:
 			s.Failed++
 		}
 	}
