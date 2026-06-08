@@ -45,8 +45,16 @@ func (r *Runner) shouldUseContainer() bool {
 }
 
 // runDirect executes cmd directly via exec.CommandContext.
+//
+// The working directory is set to the system temp dir, NOT teststop's own cwd.
+// Otherwise a spawned `claude`/`copilot` would inherit teststop's directory and
+// load the target project's CLAUDE.md and MCP configuration — contaminating the
+// AI's behavior (and potentially failing when those MCP servers are unavailable
+// to a subprocess). Credentials live under $HOME, not cwd, so a neutral cwd is
+// safe; the mandate/scenario prompt is fully self-contained.
 func (r *Runner) runDirect(ctx context.Context, cmd string, args ...string) Result {
 	c := exec.CommandContext(ctx, cmd, args...)
+	c.Dir = os.TempDir()
 	stdout, err := c.Output()
 	var stderr []byte
 	if exitErr, ok := err.(*exec.ExitError); ok {

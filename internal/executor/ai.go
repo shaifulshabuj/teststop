@@ -39,15 +39,22 @@ func (e *AIExecutor) Execute(_ context.Context, s scenario.Scenario) ExecutionRe
 	out, err := e.Adapter.Prompt(e.buildPrompt(s))
 	res.Duration = time.Since(start)
 	if err != nil {
+		// The AI CLI errored (e.g. exit 1 on rate-limit exhaustion). This is an
+		// infrastructure failure, not a verdict about the target — mark it skipped
+		// so it does not pollute confidence, failures, or the exit code.
 		res.Passed = false
-		res.ActualBehavior = "AI execution failed to run"
+		res.Skipped = true
+		res.ActualBehavior = "AI execution skipped (infrastructure error)"
 		res.FailureReason = err.Error()
 		return res
 	}
 
 	v, err := parseVerdict(out)
 	if err != nil {
+		// We got output but no parseable verdict — also not a verdict about the
+		// target. Skip rather than count it as a failure.
 		res.Passed = false
+		res.Skipped = true
 		res.ActualBehavior = "AI returned an unparseable verdict"
 		res.FailureReason = err.Error()
 		return res

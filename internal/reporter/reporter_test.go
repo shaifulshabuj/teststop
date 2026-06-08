@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shaifulshabuj/teststop/internal/executor"
 	"github.com/shaifulshabuj/teststop/internal/reporter"
 	"github.com/shaifulshabuj/teststop/pkg/scenario"
 )
@@ -164,6 +165,28 @@ func TestExecSummary_JSONShape(t *testing.T) {
 	}
 	if !strings.Contains(out, `"count": 1`) {
 		t.Error("JSON exec_summary should carry a count")
+	}
+}
+
+func TestSummarizeExecutions_SkippedNotCountedAsFailed(t *testing.T) {
+	execs := []executor.ExecutionResult{
+		{ScenarioID: "a", Passed: true},
+		{ScenarioID: "b", Passed: false},                // real failure
+		{ScenarioID: "c", Passed: false, Skipped: true}, // infra — not a failure
+		{ScenarioID: "d", Passed: false, Skipped: true}, // infra — not a failure
+	}
+	s := reporter.SummarizeExecutions(execs, "http://localhost:8080")
+	if s.Passed != 1 {
+		t.Errorf("passed = %d, want 1", s.Passed)
+	}
+	if s.Failed != 1 {
+		t.Errorf("failed = %d, want 1 (skipped must not count as failed)", s.Failed)
+	}
+	if s.Skipped != 2 {
+		t.Errorf("skipped = %d, want 2", s.Skipped)
+	}
+	if s.Count != 4 {
+		t.Errorf("count = %d, want 4", s.Count)
 	}
 }
 

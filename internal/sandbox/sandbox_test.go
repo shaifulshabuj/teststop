@@ -2,6 +2,9 @@ package sandbox_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shaifulshabuj/teststop/internal/sandbox"
@@ -44,6 +47,31 @@ func TestRunner_runDirect(t *testing.T) {
 	}
 	if string(result.Stdout) != "hello\n" {
 		t.Errorf("expected 'hello\\n', got %q", result.Stdout)
+	}
+}
+
+func TestRunner_runDirect_neutralCwd(t *testing.T) {
+	// A directly-spawned process must run in a neutral cwd (system temp), not
+	// teststop's own directory — otherwise it would load the target project's
+	// CLAUDE.md / MCP config. Verify by asking the child for its working dir.
+	t.Setenv("TESTSTOP_SANDBOX", "none")
+	r := sandbox.New(sandbox.ModeDisabled)
+	result := r.Run(context.Background(), sandbox.RunConfig{}, "pwd")
+	if result.Err != nil {
+		t.Fatalf("pwd should succeed: %v", result.Err)
+	}
+
+	got := strings.TrimSpace(string(result.Stdout))
+	// Resolve symlinks on both sides (macOS temp is /var → /private/var).
+	gotResolved, _ := filepath.EvalSymlinks(got)
+	tmpResolved, _ := filepath.EvalSymlinks(os.TempDir())
+	if gotResolved != tmpResolved {
+		t.Errorf("child cwd = %q, want temp dir %q", gotResolved, tmpResolved)
+	}
+
+	// And it must NOT be the test's own working directory.
+	if wd, _ := os.Getwd(); got == wd {
+		t.Errorf("child inherited teststop cwd %q — isolation failed", wd)
 	}
 }
 

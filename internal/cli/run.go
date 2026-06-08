@@ -105,11 +105,14 @@ func runCmdE(cmd *cobra.Command, args []string) error {
 	}
 	executions := executor.Run(cmd.Context(), execCfg, scenarios)
 
-	// 8. Update memory from real execution outcomes.
+	// 8. Update memory from real execution outcomes. Skipped results (AI infra
+	//    errors, rate limits) carry no verdict about the target, so they must not
+	//    move confidence in either direction.
 	for _, r := range executions {
-		if r.Area != "" {
-			mem.UpdateArea(r.Area, r.Passed)
+		if r.Skipped || r.Area == "" {
+			continue
 		}
+		mem.UpdateArea(r.Area, r.Passed)
 	}
 
 	// 9. Build run result (after memory update so reported state reflects this run).
@@ -159,10 +162,11 @@ func buildRunResult(
 		titleByID[s.ScenarioID] = s.Title
 	}
 
-	// Collect failures from real execution outcomes.
+	// Collect failures from real execution outcomes. Skipped (infrastructure)
+	// results are not verdicts about the target, so they are never failures.
 	var failures []reporter.Failure
 	for _, r := range executions {
-		if r.Passed {
+		if r.Passed || r.Skipped {
 			continue
 		}
 		desc := r.ActualBehavior
