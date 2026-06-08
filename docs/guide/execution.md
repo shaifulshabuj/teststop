@@ -186,5 +186,20 @@ failure lowers confidence for the `api/login` area and is reflected in the
   `2` (do not deploy).
 - Below-threshold average confidence sets exit code `1` (review).
 
+### Skipped scenarios (infrastructure errors)
+
+If the AI driver can't return a verdict for an **infrastructure** reason — the AI
+CLI exits with an error, hits a rate limit, or returns unparseable output — the
+scenario is marked **skipped**, not failed. Skipped scenarios:
+
+- do **not** move confidence in either direction,
+- are **not** counted as failures and never trigger exit code `2`,
+- are surfaced separately in the report and as `exec_summary.skipped` /
+  `executions[].skipped` so you can see them without them polluting the signal.
+
+This keeps a rate-limited run from fabricating "failures" that say nothing about
+the system under test. The report shows e.g.
+`Results: 19 passed, 7 failed, 17 skipped (infrastructure error — not counted)`.
+
 Without `--target`, well-formed scenarios pass structural validation, so behavior
 matches v0.1.

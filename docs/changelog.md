@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.3.1] — 2026-06-08
+
+Correctness fixes from a Waymark usage review (#44).
+
+### Fixed
+
+- **AI infrastructure errors no longer count as scenario failures** (#44). An AI
+  CLI error (e.g. exit 1 on rate-limit exhaustion) or unparseable verdict now marks
+  the scenario **skipped**, not failed — excluded from confidence, failures, and the
+  exit code, and reported separately (`exec_summary.skipped`). A rate-limited run no
+  longer fabricates failures that drag confidence down.
+- **Spawned AI runs in a neutral working directory** (#44). Direct `claude`/`copilot`
+  calls run from the system temp dir, so they no longer load the target project's
+  `CLAUDE.md` / MCP configuration.
+
+---
+
 ## [v0.3.0] — 2026-06-07
 
 ### Added
@@ -181,6 +198,7 @@ First public release of teststop.
 
 ---
 
+[v0.3.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.3.1
 [v0.3.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.3.0
 [v0.2.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.2.1
 [v0.2.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.2.0
