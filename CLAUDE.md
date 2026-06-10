@@ -123,6 +123,30 @@ TESTSTOP_SANDBOX=auto    # auto | required | none  (default: auto)
 
 **No API keys. No SDK.** teststop shells out to the AI CLI already on the user's PATH.
 
+## Config File (internal/config/)
+
+`.teststop/config.yaml` is an **optional** per-project config for `teststop run`.
+It is loaded by `internal/config` and applied in `internal/cli/run.go`. Every key
+maps one-to-one onto an existing `run` flag — config introduces **no new settings**
+(zero-config stays the default; a missing file is never an error).
+
+**Precedence (lowest → highest):** `config.yaml` < `TESTSTOP_RUN_*` env var < explicit CLI flag.
+
+```yaml
+# .teststop/config.yaml — all keys optional
+depth: normal          # --depth        / TESTSTOP_RUN_DEPTH
+output: text           # --output       / TESTSTOP_RUN_OUTPUT
+threshold: 80          # --threshold    / TESTSTOP_RUN_THRESHOLD
+no_color: false        # --no-color     / TESTSTOP_RUN_NO_COLOR
+quiet: false           # --quiet        / TESTSTOP_RUN_QUIET
+target: ""             # --target       / TESTSTOP_RUN_TARGET
+concurrency: 4         # --concurrency  / TESTSTOP_RUN_CONCURRENCY
+exec_timeout: 10s      # --exec-timeout / TESTSTOP_RUN_EXEC_TIMEOUT
+max_retries: 2         # --max-retries  / TESTSTOP_RUN_MAX_RETRIES
+```
+
+Malformed YAML or an unknown key fails loudly. See `.teststop/config.example.yaml`.
+
 ## Runtime Sandbox (internal/sandbox/)
 
 teststop runs the AI CLI inside an Apple Container VM when available. The AI executes inside an isolated linux/arm64 environment — it cannot access the user's host filesystem beyond the mounted project path.
