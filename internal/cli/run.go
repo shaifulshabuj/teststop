@@ -22,16 +22,17 @@ import (
 )
 
 var (
-	runPath        string
-	runDepth       string
-	runOutput      string
-	runThreshold   int
-	runNoColor     bool
-	runQuiet       bool
-	runTarget      string
-	runConcurrency int
-	runExecTimeout time.Duration
-	runMaxRetries  int
+	runPath          string
+	runDepth         string
+	runOutput        string
+	runThreshold     int
+	runNoColor       bool
+	runQuiet         bool
+	runTarget        string
+	runConcurrency   int
+	runAIConcurrency int
+	runExecTimeout   time.Duration
+	runMaxRetries    int
 )
 
 var runCmd = &cobra.Command{
@@ -51,6 +52,7 @@ func init() {
 	runCmd.Flags().BoolVar(&runQuiet, "quiet", false, "Minimal output")
 	runCmd.Flags().StringVar(&runTarget, "target", "", "Base URL of the running system to execute against (e.g. http://localhost:8080); empty = static validation only")
 	runCmd.Flags().IntVar(&runConcurrency, "concurrency", 4, "Max scenarios executed in parallel")
+	runCmd.Flags().IntVar(&runAIConcurrency, "ai-concurrency", 1, "Max concurrent AI-mode executions (default 1 to avoid rate-limit exhaustion)")
 	runCmd.Flags().DurationVar(&runExecTimeout, "exec-timeout", 10*time.Second, "Per-request execution timeout")
 	runCmd.Flags().IntVar(&runMaxRetries, "max-retries", 2, "Retries for transient HTTP execution failures")
 }
@@ -107,11 +109,12 @@ func runCmdE(cmd *cobra.Command, args []string) error {
 
 	// 7. Execute scenarios (hybrid: HTTP/AI when --target set, else static validation).
 	execCfg := executor.Config{
-		Target:      runTarget,
-		Timeout:     runExecTimeout,
-		MaxRetries:  runMaxRetries,
-		Concurrency: runConcurrency,
-		Adapter:     adapter,
+		Target:        runTarget,
+		Timeout:       runExecTimeout,
+		MaxRetries:    runMaxRetries,
+		Concurrency:   runConcurrency,
+		AIConcurrency: runAIConcurrency,
+		Adapter:       adapter,
 	}
 	executions := executor.Run(cmd.Context(), execCfg, scenarios)
 
@@ -280,6 +283,9 @@ func resolveRunSettings(cmd *cobra.Command, projectPath string) error {
 	if cfg.Concurrency != nil && !changed("concurrency") {
 		runConcurrency = *cfg.Concurrency
 	}
+	if cfg.AIConcurrency != nil && !changed("ai-concurrency") {
+		runAIConcurrency = *cfg.AIConcurrency
+	}
 	if cfg.ExecTimeout != nil && !changed("exec-timeout") {
 		runExecTimeout = *cfg.ExecTimeout
 	}
@@ -332,6 +338,13 @@ func applyRunEnv(changed func(string) bool) error {
 			return fmt.Errorf("config: TESTSTOP_RUN_CONCURRENCY=%q is not an integer: %w", v, err)
 		}
 		runConcurrency = n
+	}
+	if v, ok := os.LookupEnv("TESTSTOP_RUN_AI_CONCURRENCY"); ok && !changed("ai-concurrency") {
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return fmt.Errorf("config: TESTSTOP_RUN_AI_CONCURRENCY=%q is not an integer: %w", v, err)
+		}
+		runAIConcurrency = n
 	}
 	if v, ok := os.LookupEnv("TESTSTOP_RUN_EXEC_TIMEOUT"); ok && !changed("exec-timeout") {
 		d, err := time.ParseDuration(strings.TrimSpace(v))

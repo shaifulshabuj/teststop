@@ -41,9 +41,10 @@ type Config struct {
 	NoColor     *bool          `yaml:"no_color"`
 	Quiet       *bool          `yaml:"quiet"`
 	Target      *string        `yaml:"target"`
-	Concurrency *int           `yaml:"concurrency"`
-	ExecTimeout *time.Duration `yaml:"exec_timeout"`
-	MaxRetries  *int           `yaml:"max_retries"`
+	Concurrency    *int           `yaml:"concurrency"`
+	AIConcurrency  *int           `yaml:"ai_concurrency"`
+	ExecTimeout    *time.Duration `yaml:"exec_timeout"`
+	MaxRetries     *int           `yaml:"max_retries"`
 }
 
 // configPath returns the path to config.yaml for the given project.

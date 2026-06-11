@@ -36,6 +36,11 @@ target: ""
 # Max scenarios executed in parallel            (flag: --concurrency, env: TESTSTOP_RUN_CONCURRENCY)
 concurrency: 4
 
+# Max concurrent AI-mode executions. Default 1 avoids exhausting the AI rate-limit
+# window; increase when your AI backend supports higher parallelism.
+#                                               (flag: --ai-concurrency, env: TESTSTOP_RUN_AI_CONCURRENCY)
+ai_concurrency: 1
+
 # Per-request execution timeout (Go duration, e.g. 10s, 1m30s)
 #                                               (flag: --exec-timeout, env: TESTSTOP_RUN_EXEC_TIMEOUT)
 exec_timeout: 10s

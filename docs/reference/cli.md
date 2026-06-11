@@ -30,6 +30,7 @@ teststop run [path] [flags]
 | `--quiet` | `false` | Minimal output — prints only `OK`, `REVIEW`, `CRITICAL`, or `ERROR` |
 | `--target <url>` | _(none)_ | Base URL of a **running** system to execute scenarios against. Empty = static validation only. |
 | `--concurrency <n>` | `4` | Max scenarios executed in parallel |
+| `--ai-concurrency <n>` | `1` | Max concurrent AI-mode executions. Keep at 1 to avoid rate-limit exhaustion; increase only when the AI backend supports higher parallelism. |
 | `--exec-timeout <dur>` | `10s` | Per-request execution timeout (e.g. `15s`, `500ms`) |
 | `--max-retries <n>` | `2` | Retries for transient HTTP execution failures (transport errors, 5xx) |
 

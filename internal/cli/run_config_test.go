@@ -22,6 +22,7 @@ func newRunCmdForTest() *cobra.Command {
 	runQuiet = false
 	runTarget = ""
 	runConcurrency = 4
+	runAIConcurrency = 1
 	runExecTimeout = 10 * time.Second
 	runMaxRetries = 2
 
@@ -33,6 +34,7 @@ func newRunCmdForTest() *cobra.Command {
 	c.Flags().BoolVar(&runQuiet, "quiet", runQuiet, "")
 	c.Flags().StringVar(&runTarget, "target", runTarget, "")
 	c.Flags().IntVar(&runConcurrency, "concurrency", runConcurrency, "")
+	c.Flags().IntVar(&runAIConcurrency, "ai-concurrency", runAIConcurrency, "")
 	c.Flags().DurationVar(&runExecTimeout, "exec-timeout", runExecTimeout, "")
 	c.Flags().IntVar(&runMaxRetries, "max-retries", runMaxRetries, "")
 	return c
@@ -179,10 +181,90 @@ func clearRunEnv(t *testing.T) {
 		"TESTSTOP_RUN_QUIET",
 		"TESTSTOP_RUN_TARGET",
 		"TESTSTOP_RUN_CONCURRENCY",
+		"TESTSTOP_RUN_AI_CONCURRENCY",
 		"TESTSTOP_RUN_EXEC_TIMEOUT",
 		"TESTSTOP_RUN_MAX_RETRIES",
 	} {
 		t.Setenv(k, "") // ensures present-but-empty is removed below
 		os.Unsetenv(k)
 	}
+}
+
+// TestResolveRunSettings_aiConcurrency covers the three-tier precedence for the
+// new --ai-concurrency / ai_concurrency / TESTSTOP_RUN_AI_CONCURRENCY setting.
+func TestResolveRunSettings_aiConcurrency(t *testing.T) {
+	t.Run("default is 1", func(t *testing.T) {
+		clearRunEnv(t)
+		dir := writeProjectConfig(t, "")
+		cmd := newRunCmdForTest()
+		if err := cmd.ParseFlags(nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := resolveRunSettings(cmd, dir); err != nil {
+			t.Fatal(err)
+		}
+		if runAIConcurrency != 1 {
+			t.Errorf("default ai-concurrency: want 1, got %d", runAIConcurrency)
+		}
+	})
+
+	t.Run("config file sets value", func(t *testing.T) {
+		clearRunEnv(t)
+		dir := writeProjectConfig(t, "ai_concurrency: 3\n")
+		cmd := newRunCmdForTest()
+		if err := cmd.ParseFlags(nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := resolveRunSettings(cmd, dir); err != nil {
+			t.Fatal(err)
+		}
+		if runAIConcurrency != 3 {
+			t.Errorf("config file: want 3, got %d", runAIConcurrency)
+		}
+	})
+
+	t.Run("env overrides config file", func(t *testing.T) {
+		clearRunEnv(t)
+		t.Setenv("TESTSTOP_RUN_AI_CONCURRENCY", "5")
+		dir := writeProjectConfig(t, "ai_concurrency: 3\n")
+		cmd := newRunCmdForTest()
+		if err := cmd.ParseFlags(nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := resolveRunSettings(cmd, dir); err != nil {
+			t.Fatal(err)
+		}
+		if runAIConcurrency != 5 {
+			t.Errorf("env: want 5, got %d", runAIConcurrency)
+		}
+	})
+
+	t.Run("explicit flag overrides env and config", func(t *testing.T) {
+		clearRunEnv(t)
+		t.Setenv("TESTSTOP_RUN_AI_CONCURRENCY", "5")
+		dir := writeProjectConfig(t, "ai_concurrency: 3\n")
+		cmd := newRunCmdForTest()
+		if err := cmd.ParseFlags([]string{"--ai-concurrency", "2"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := resolveRunSettings(cmd, dir); err != nil {
+			t.Fatal(err)
+		}
+		if runAIConcurrency != 2 {
+			t.Errorf("explicit flag: want 2, got %d", runAIConcurrency)
+		}
+	})
+
+	t.Run("malformed env errors", func(t *testing.T) {
+		clearRunEnv(t)
+		t.Setenv("TESTSTOP_RUN_AI_CONCURRENCY", "notanint")
+		dir := writeProjectConfig(t, "")
+		cmd := newRunCmdForTest()
+		if err := cmd.ParseFlags(nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := resolveRunSettings(cmd, dir); err == nil {
+			t.Fatal("expected error for malformed TESTSTOP_RUN_AI_CONCURRENCY")
+		}
+	})
 }
