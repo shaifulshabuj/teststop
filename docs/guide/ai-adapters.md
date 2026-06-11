@@ -109,10 +109,10 @@ teststop report
 
 ## Future Adapters
 
-The `AIAdapter` interface is designed to be extensible. Planned adapters for future versions:
+The `AIAdapter` interface is designed to be extensible.
 
-- **Ollama** (local models, v0.2) — `TESTSTOP_CLI=ollama` with `TESTSTOP_MODEL=<model>`
-- **OpenAI CLI** — community contribution welcome
+- **Ollama** (local models) — planned in [issue #30](https://github.com/shaifulshabuj/teststop/issues/30). Not yet implemented; `TESTSTOP_CLI=ollama` is not a valid value today.
+- **OpenAI CLI** — community contribution welcome.
 
 To add a new adapter, implement the `AIAdapter` interface in `internal/ai/` and register it in `Detect()`.
 
