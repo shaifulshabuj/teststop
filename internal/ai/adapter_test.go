@@ -150,6 +150,29 @@ func TestParseScenarios_multipleScenarios(t *testing.T) {
 	}
 }
 
+// TestParseScenarios_invalidEscapes verifies that invalid JSON escape sequences
+// emitted by some local models (e.g. gemma4 \xNN hex notation) are sanitized
+// before parsing so the scenario array is still recovered.
+func TestParseScenarios_invalidEscapes(t *testing.T) {
+	// \x in a JSON string is invalid; gemma4 emits this for some characters.
+	raw := []byte(`[{"scenario_id":"esc-001","title":"Tab conflict","user_perspective":"I\x27m a manager","preconditions":["logged in"],"steps":["open two tabs"],"chaos_factors":[],"expected_behavior":"idempotent","failure_modes":["duplicate action"],"priority":"high","confidence_area":"actions","is_edge_case":false}]`)
+
+	scenarios, err := ai.ParseScenariosFromJSON(raw)
+	if err != nil {
+		t.Fatalf("invalid escape should be sanitized: %v", err)
+	}
+	if len(scenarios) != 1 {
+		t.Fatalf("expected 1 scenario, got %d", len(scenarios))
+	}
+	if scenarios[0].ScenarioID != "esc-001" {
+		t.Errorf("unexpected scenario_id: %s", scenarios[0].ScenarioID)
+	}
+	// \x27 is a hex-escaped apostrophe; after sanitization it becomes 27 (literal digit chars)
+	if !strings.Contains(scenarios[0].UserPerspective, "27") {
+		t.Errorf("expected sanitized content in user_perspective: %q", scenarios[0].UserPerspective)
+	}
+}
+
 // TestParseScenarios_proseBeforeArray verifies that a local model emitting reasoning
 // prose before the JSON array is still parsed correctly (qwen3:4b failure mode).
 func TestParseScenarios_proseBeforeArray(t *testing.T) {

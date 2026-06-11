@@ -5,10 +5,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/shaifulshabuj/teststop/pkg/scenario"
 )
+
+// invalidEscapeRE matches JSON-illegal escape sequences emitted by some local
+// models (e.g. gemma4 produces \x41 hex notation). Valid JSON escape suffixes
+// are: " \ / b f n r t u — everything else is invalid.
+var invalidEscapeRE = regexp.MustCompile(`\\([^"\\\/bfnrtu])`)
 
 // AIAdapter is the interface all AI backends implement.
 type AIAdapter interface {
@@ -81,19 +87,27 @@ func ParseScenariosFromJSON(data []byte) ([]scenario.Scenario, error) {
 	s = strings.TrimSuffix(s, "```")
 	s = strings.TrimSpace(s)
 
-	// Try to unmarshal directly first. If that fails, attempt to extract a JSON
-	// array from within the text — local models (e.g. qwen3:4b) sometimes emit
-	// reasoning prose before or after the array even when instructed not to.
+	// Three-pass parse strategy to handle sloppy local-model output:
+	// 1. Direct unmarshal (fast path — cloud CLIs, well-behaved models).
+	// 2. Extract JSON array from prose-wrapped output (qwen3:4b-style preamble).
+	// 3. Sanitize invalid escape sequences then retry (gemma4 emits \xNN hex).
 	var scenarios []scenario.Scenario
 	if err := json.Unmarshal([]byte(s), &scenarios); err != nil {
-		extracted, ok := extractJSONArray(s)
-		if !ok {
-			return nil, fmt.Errorf("ai: failed to parse scenarios JSON: %w\nraw output: %s", err, truncate(data, 500))
+		// Pass 2: extract [...] from within prose.
+		candidate := s
+		if extracted, ok := extractJSONArray(s); ok {
+			candidate = extracted
+			if err2 := json.Unmarshal([]byte(candidate), &scenarios); err2 == nil {
+				goto validated
+			}
 		}
-		if err2 := json.Unmarshal([]byte(extracted), &scenarios); err2 != nil {
+		// Pass 3: sanitize invalid escape sequences and retry.
+		sanitized := sanitizeJSONEscapes(candidate)
+		if err3 := json.Unmarshal([]byte(sanitized), &scenarios); err3 != nil {
 			return nil, fmt.Errorf("ai: failed to parse scenarios JSON: %w\nraw output: %s", err, truncate(data, 500))
 		}
 	}
+validated:
 
 	// Defense-in-depth: if every parsed scenario is hollow (missing both
 	// scenario_id and title) the input was not a valid scenario array — most
@@ -112,6 +126,14 @@ func ParseScenariosFromJSON(data []byte) ([]scenario.Scenario, error) {
 	}
 
 	return scenarios, nil
+}
+
+// sanitizeJSONEscapes removes invalid JSON escape sequences emitted by some local
+// models. It replaces \X (where X is not a valid JSON escape character) with just X,
+// preserving the string content while making the JSON parseable.
+// Common cases: gemma4 emits \x41 (hex notation), models emit \' (unnecessary).
+func sanitizeJSONEscapes(s string) string {
+	return invalidEscapeRE.ReplaceAllString(s, "$1")
 }
 
 // extractJSONArray scans s for the first '[' and finds its matching ']' using
