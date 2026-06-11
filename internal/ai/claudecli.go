@@ -27,7 +27,12 @@ func (c *ClaudeCLI) Name() string { return "claude" }
 // claudeEnvelope is the JSON wrapper emitted by `claude --output-format json`.
 // We parse this to detect errors (rate limit, auth, refusal) before extracting
 // the inner result for downstream parsing.
+//
+// claude CLI 2.1.x+ streams a JSON array of event objects; earlier versions
+// emit a single JSON object. Both carry the same is_error/result fields on the
+// terminal "result" event, so we handle both with the same struct.
 type claudeEnvelope struct {
+	Type           string          `json:"type"` // event type: "system", "assistant", "result", etc.
 	IsError        bool            `json:"is_error"`
 	Result         string          `json:"result"`
 	RateLimitEvent json.RawMessage `json:"rate_limit_event"`
@@ -84,11 +89,36 @@ func (c *ClaudeCLI) GenerateScenarios(mandate string) ([]scenario.Scenario, erro
 }
 
 // parseClaudeEnvelope parses the JSON envelope from `claude --output-format json`.
+//
+// claude CLI 2.1.x+ emits a JSON array of streaming event objects; older
+// versions emit a single JSON object. Both formats are handled:
+//
+//   - Single object: `{"is_error":false,"result":"..."}` — parsed directly.
+//   - Array of events: `[{"type":"system",...},{"type":"result","is_error":false,"result":"..."}]`
+//     — the last element whose "type" is "result" is returned.
 func parseClaudeEnvelope(data []byte) (claudeEnvelope, error) {
 	s := strings.TrimSpace(string(data))
-	var env claudeEnvelope
-	if err := json.Unmarshal([]byte(s), &env); err != nil {
-		return claudeEnvelope{}, err
+
+	// Fast path: single JSON object (legacy format or non-streaming mode).
+	if len(s) > 0 && s[0] == '{' {
+		var env claudeEnvelope
+		if err := json.Unmarshal([]byte(s), &env); err != nil {
+			return claudeEnvelope{}, err
+		}
+		return env, nil
 	}
-	return env, nil
+
+	// Streaming array format: claude CLI 2.1.x+ wraps all events in a JSON
+	// array. Find the last element whose "type" is "result" — that event carries
+	// is_error and the inner result string.
+	var events []claudeEnvelope
+	if err := json.Unmarshal([]byte(s), &events); err != nil {
+		return claudeEnvelope{}, fmt.Errorf("claude output is neither a JSON object nor a JSON array: %s", truncate([]byte(s), 200))
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type == "result" {
+			return events[i], nil
+		}
+	}
+	return claudeEnvelope{}, fmt.Errorf("claude streaming output: no 'result' event found in %d events", len(events))
 }

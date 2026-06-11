@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.0.1] — 2026-06-11
+
+### Fixed
+
+- **claude CLI 2.1.x streaming format** (`internal/ai`). claude 2.1.172 changed
+  its `--output-format json` output from a single JSON object to a **JSON array
+  of streaming events**. `parseClaudeEnvelope` failed to unmarshal the array into
+  a struct, triggering the legacy fallback which fed the raw event array to
+  `ParseScenariosFromJSON`. The parser then silently unmarshaled each event object
+  (with no matching field names) into a zero-value `Scenario` — yielding batches
+  of hollow structs with empty title, steps, priority, and confidence_area. Exit
+  code was 1 ("review needed") rather than an error, so the defect was silent.
+
+  `parseClaudeEnvelope` now handles **both** formats:
+  - Single JSON object `{…}` — legacy path, unchanged.
+  - JSON array `[…]` — finds the last event where `"type":"result"` and returns
+    its `is_error` / `result` fields. Error detection (rate-limit, auth, refusal)
+    works correctly for both formats.
+
+  `ParseScenariosFromJSON` also gains a **hollow-batch guard**: if every parsed
+  scenario has an empty `scenario_id` AND `title`, an explicit error is returned
+  instead of the silent zero-value batch. This is defense-in-depth that fires even
+  if the envelope parsing falls back to raw output.
+
+---
+
 ## [v1.0.0] — 2026-06-11
 
 ### Added
@@ -197,6 +223,7 @@ First public release of teststop.
 
 ---
 
+[v1.0.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v1.0.1
 [v1.0.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v1.0.0
 [v0.3.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.3.1
 [v0.3.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.3.0
