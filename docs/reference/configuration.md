@@ -29,6 +29,7 @@ no_color: false        # --no-color
 quiet: false           # --quiet
 target: ""             # --target
 concurrency: 4         # --concurrency
+ai_concurrency: 1      # --ai-concurrency (max concurrent AI-mode executions)
 exec_timeout: 10s      # --exec-timeout
 max_retries: 2         # --max-retries
 ```
@@ -50,6 +51,7 @@ These variables mirror every `teststop run` flag. They override config.yaml but 
 | `TESTSTOP_RUN_QUIET` | `--quiet` | boolean | `false` |
 | `TESTSTOP_RUN_TARGET` | `--target` | string | _(none)_ |
 | `TESTSTOP_RUN_CONCURRENCY` | `--concurrency` | integer | `4` |
+| `TESTSTOP_RUN_AI_CONCURRENCY` | `--ai-concurrency` | integer | `1` |
 | `TESTSTOP_RUN_EXEC_TIMEOUT` | `--exec-timeout` | duration | `10s` |
 | `TESTSTOP_RUN_MAX_RETRIES` | `--max-retries` | integer | `2` |
 

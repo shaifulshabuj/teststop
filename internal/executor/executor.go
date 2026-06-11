@@ -28,9 +28,10 @@ const (
 
 // Defaults applied by Config.withDefaults when fields are zero.
 const (
-	DefaultTimeout     = 10 * time.Second
-	DefaultMaxRetries  = 2
-	DefaultConcurrency = 4
+	DefaultTimeout       = 10 * time.Second
+	DefaultMaxRetries    = 2
+	DefaultConcurrency   = 4
+	DefaultAIConcurrency = 1
 )
 
 // ExecutionResult is the outcome of executing a single scenario.
@@ -68,12 +69,13 @@ type Executor interface {
 
 // Config controls a Run.
 type Config struct {
-	Target      string          // base URL of the running system; "" disables live execution
-	Timeout     time.Duration   // per-request timeout
-	MaxRetries  int             // retries for transient HTTP failures
-	Concurrency int             // max scenarios executed in parallel
-	Adapter     ai.AIAdapter    // AI backend for AI-driven execution
-	Runner      *sandbox.Runner // reserved for future sandbox-aware execution
+	Target         string          // base URL of the running system; "" disables live execution
+	Timeout        time.Duration   // per-request timeout
+	MaxRetries     int             // retries for transient HTTP failures
+	Concurrency    int             // max scenarios executed in parallel (HTTP + static)
+	AIConcurrency  int             // max AI-mode executions in parallel (default 1)
+	Adapter        ai.AIAdapter    // AI backend for AI-driven execution
+	Runner         *sandbox.Runner // reserved for future sandbox-aware execution
 }
 
 func (c Config) withDefaults() Config {
@@ -85,6 +87,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.Concurrency <= 0 {
 		c.Concurrency = DefaultConcurrency
+	}
+	if c.AIConcurrency <= 0 {
+		c.AIConcurrency = DefaultAIConcurrency
 	}
 	return c
 }
@@ -100,13 +105,26 @@ func (c Config) pick(s scenario.Scenario) Executor {
 	return &StaticExecutor{}
 }
 
+// isAIMode returns true when the scenario will be dispatched to AIExecutor.
+func (c Config) isAIMode(s scenario.Scenario) bool {
+	return c.Target != "" && c.Adapter != nil && !(s.Exec != nil && s.Exec.Mode == scenario.ExecHTTP)
+}
+
 // Run executes every scenario using a bounded worker pool. Results are returned
 // in the same order as the input scenarios. Respects ctx cancellation.
+//
+// Two semaphores gate concurrency:
+//   - sem: overall limit (cfg.Concurrency) — all executor types share this
+//   - aiSem: AI-mode limit (cfg.AIConcurrency) — only AIExecutor scenarios
+//
+// The AI semaphore is acquired inside the goroutine so HTTP and static slots are
+// not held idle while waiting for an AI slot.
 func Run(ctx context.Context, cfg Config, scenarios []scenario.Scenario) []ExecutionResult {
 	cfg = cfg.withDefaults()
 
 	results := make([]ExecutionResult, len(scenarios))
 	sem := make(chan struct{}, cfg.Concurrency)
+	aiSem := make(chan struct{}, cfg.AIConcurrency)
 	done := make(chan int, len(scenarios))
 
 	for i, s := range scenarios {
@@ -130,6 +148,10 @@ func Run(ctx context.Context, cfg Config, scenarios []scenario.Scenario) []Execu
 
 		go func(i int, s scenario.Scenario) {
 			defer func() { <-sem }()
+			if cfg.isAIMode(s) {
+				aiSem <- struct{}{}
+				defer func() { <-aiSem }()
+			}
 			ex := cfg.pick(s)
 			r := ex.Execute(ctx, s)
 			// Ensure identity fields are always populated regardless of executor.

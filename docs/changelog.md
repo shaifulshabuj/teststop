@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **AI-mode concurrency cap** (#45) — `--ai-concurrency` flag (default 1) decouples AI-mode
+  parallelism from HTTP-mode parallelism. AI executor calls now run through a dedicated
+  semaphore so a high `--concurrency` value no longer fires multiple `claude -p` calls in
+  parallel and exhausts the rate-limit window. Configurable via `.teststop/config.yaml`
+  (`ai_concurrency` key) and `TESTSTOP_RUN_AI_CONCURRENCY` env var with the same three-tier
+  precedence chain as all other run settings.
+
+- **Structured error detection for claude adapter** (#46) — `claudecli.go` now passes
+  `--output-format json` to the `claude` CLI. The JSON envelope (`is_error`,
+  `rate_limit_event`, `result`) is parsed before downstream scenario/verdict parsing, so
+  rate-limit events, auth errors, and refusals are detected precisely and surfaced as
+  *skipped* (infrastructure errors, not verdicts about the target). The `.result` field is
+  extracted transparently, so `ParseScenariosFromJSON` and `parseVerdict` continue to work
+  unchanged. The copilot adapter is unaffected.
+
+---
+
 ## [v0.3.1] — 2026-06-08
 
 Correctness fixes from a Waymark usage review (#44).
