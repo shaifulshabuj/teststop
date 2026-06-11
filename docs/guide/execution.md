@@ -45,7 +45,7 @@ flowchart TD
 |-----------|----------|----------|
 | Scenario has a structured `exec` block **and** `--target` is set | **HTTP** | Fires the exact request with `net/http`; judged on status code |
 | `--target` set, scenario is prose-only | **AI-driven** | The AI actually performs the steps against the target and returns a verdict |
-| No `--target` | **Static** | Validates scenario structure only (default; ≈ v0.1 behavior) |
+| No `--target` | **Static** | Validates scenario structure only (default) |
 
 The HTTP path is **deterministic and fast** (no AI call at execution time). The
 AI path covers open-ended, chaos-heavy scenarios that can't be reduced to one
@@ -201,5 +201,4 @@ This keeps a rate-limited run from fabricating "failures" that say nothing about
 the system under test. The report shows e.g.
 `Results: 19 passed, 7 failed, 17 skipped (infrastructure error — not counted)`.
 
-Without `--target`, well-formed scenarios pass structural validation, so behavior
-matches v0.1.
+Without `--target`, well-formed scenarios pass structural validation — static-only mode.

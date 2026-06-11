@@ -6,7 +6,7 @@ hide:
 
 <div class="ts-hero" markdown>
 
-<div class="ts-hero-badge">v0.1 — Now Available</div>
+<div class="ts-hero-badge">v0.3.1 — Now Available</div>
 
 # **teststop**<br><span class="accent">Break it before your users do.</span>
 

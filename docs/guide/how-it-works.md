@@ -142,7 +142,7 @@ The AI has a **5-minute timeout** per run.
 
 For each scenario with a `confidence_area` field, teststop updates that area's confidence score.
 
-In v0.1, all generated scenarios count as passes (the execution engine arrives in v0.2). The confidence update formula is:
+Without `--target`, all generated scenarios count as structural passes. With `--target`, real HTTP or AI-driven execution results drive confidence. The confidence update formula is:
 
 ```
 new_confidence = old + 0.19 × (1.0 - old)

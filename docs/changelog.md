@@ -182,10 +182,13 @@ First public release of teststop.
 
 ## Roadmap
 
-### v0.2 (in progress)
+### v0.2 (released)
 
 - ✅ **Scenario executor** — run generated scenarios against a live system _(shipped in v0.2.0)_
-- **Ollama adapter** — local model support via `TESTSTOP_CLI=ollama`
+
+Items that were on the v0.2 roadmap but remain unshipped:
+
+- **Ollama adapter** — local model support via `TESTSTOP_CLI=ollama` ([issue #30](https://github.com/shaifulshabuj/teststop/issues/30))
 - **`teststop watch`** — file-watching mode that re-runs on code changes
 - **Sandbox-network-aware execution** — run the executor inside the sandbox network
 
