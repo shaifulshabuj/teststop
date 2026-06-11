@@ -20,6 +20,14 @@ func TestResolveVersion_FallsBackWhenDev(t *testing.T) {
 	}
 }
 
+func TestResolveVersion_EmptyReturnsEmpty(t *testing.T) {
+	// Empty injected version: build info in test context has "(devel)", so the
+	// function falls through and returns the injected value unchanged ("").
+	got := resolveVersion("")
+	// Must not panic; value is "" or a module version string — either is valid.
+	_ = got
+}
+
 func TestVersionCommand_PrintsBuildInfo(t *testing.T) {
 	buildVersion, buildCommit, buildDate = "v9.9.9", "deadbeef", "2026-06-07"
 

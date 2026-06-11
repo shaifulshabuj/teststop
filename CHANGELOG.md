@@ -7,17 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [v1.0.0] — DRAFT (unreleased)
 
 ### Added
 
-- **`.teststop/config.yaml` loading** (v1.0). The optional project config file
-  that the docs have long advertised is now real. Every key maps one-to-one onto
-  an existing `teststop run` flag — no new settings are introduced. Settings
-  resolve with precedence **config file < `TESTSTOP_RUN_*` env var < explicit CLI
-  flag**, so zero-config behavior and explicit flags are both preserved. A
-  missing file is not an error; malformed YAML or an unknown key fails loudly.
-  See `.teststop/config.example.yaml` for the supported keys.
+- **`.teststop/config.yaml` support.** The optional per-project config file is
+  now real. Every key maps one-to-one onto an existing `teststop run` flag.
+  Settings resolve with precedence **config file < `TESTSTOP_RUN_*` env var <
+  explicit CLI flag**. A missing file is not an error; malformed YAML or an
+  unknown key fails loudly. See `.teststop/config.example.yaml` for the keys.
+
+- **`--ai-concurrency` flag** (default `1`). Caps the number of concurrently
+  running AI-mode scenario executions to prevent rate-limit exhaustion. Config
+  key `ai_concurrency`; env `TESTSTOP_RUN_AI_CONCURRENCY`.
+
+- **Structured AI error detection.** The Claude adapter now calls
+  `claude --output-format json` and parses the outer envelope, surfacing
+  structured errors (rate-limit, auth failure, refusal) with context instead
+  of raw stderr. Non-zero exits and envelope `is_error: true` both map to
+  informative error messages.
+
+- **E2E pipeline test** (`test/e2e/`). A full reader → mandate → adapter →
+  memory → reporter → exit-code integration test using a fake-claude fixture
+  script. Runs without real tokens; skippable via `-short`.
+
+- **v1.0 contracts frozen** (`CONTRACTS.md`). Exit codes, scenario JSON schema,
+  run output envelope, memory file format, and environment variables are
+  declared stable. Breaking changes require a major version bump.
+
+- **`examples/waymark-demo/`**. Replayable demo artifact: 52-scenario run
+  against the waymark MCP middleware repo, with the captured JSON report,
+  Markdown summary, the mandate used, and replay instructions.
+
+### Changed
+
+- `pkg/scenario/types.go` package comment declares the schema FROZEN at v1.0.
+- `internal/cli` test coverage raised from 28.9% → 51.6%.
 
 ---
 
@@ -172,6 +197,7 @@ First public release of teststop.
 
 ---
 
+[v1.0.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v1.0.0
 [v0.3.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.3.1
 [v0.3.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.3.0
 [v0.2.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.2.1

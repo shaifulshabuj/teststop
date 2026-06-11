@@ -156,6 +156,33 @@ concurrency: 8
 		}
 	})
 
+	t.Run("file sets output, no-color, quiet, exec-timeout, max-retries", func(t *testing.T) {
+		clearRunEnv(t)
+		dir := writeProjectConfig(t, "output: json\nno_color: true\nquiet: true\nexec_timeout: 5s\nmax_retries: 3\n")
+		cmd := newRunCmdForTest()
+		if err := cmd.ParseFlags(nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := resolveRunSettings(cmd, dir); err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		if runOutput != "json" {
+			t.Errorf("output: want %q, got %q", "json", runOutput)
+		}
+		if !runNoColor {
+			t.Error("no_color: want true")
+		}
+		if !runQuiet {
+			t.Error("quiet: want true")
+		}
+		if runExecTimeout != 5*time.Second {
+			t.Errorf("exec_timeout: want 5s, got %v", runExecTimeout)
+		}
+		if runMaxRetries != 3 {
+			t.Errorf("max_retries: want 3, got %d", runMaxRetries)
+		}
+	})
+
 	t.Run("malformed config file errors", func(t *testing.T) {
 		clearRunEnv(t)
 		dir := writeProjectConfig(t, "depth: [unterminated\n")
