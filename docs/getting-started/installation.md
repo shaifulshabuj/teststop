@@ -1,6 +1,6 @@
 # Installation
 
-teststop ships as a single, zero-dependency binary. No runtime, no config files, no daemon.
+teststop ships as a single, zero-dependency binary. No runtime, no daemon. Configuration is optional — `teststop run` works with zero setup on any project.
 
 ## Prerequisites
 
@@ -93,7 +93,7 @@ teststop --version
 ```
 
 ```
-teststop version v0.1.0
+teststop v0.3.1
 ```
 
 ---

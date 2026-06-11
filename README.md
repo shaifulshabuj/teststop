@@ -53,7 +53,7 @@ teststop run --path ./src
 # Control testing depth
 teststop run --depth aggressive   # light | normal | aggressive
 
-# Execute scenarios against a RUNNING system (v0.2)
+# Execute scenarios against a RUNNING system
 teststop run --target http://localhost:8080
 
 # Machine-readable output for AI agents
@@ -72,7 +72,7 @@ teststop mandate --show
 teststop version          # or: teststop --version / teststop -v
 ```
 
-### Execute Against a Live System (v0.2)
+### Execute Against a Live System
 
 By default teststop **generates** adversarial scenarios and validates them
 structurally. Point it at a running system with `--target` and it will also
@@ -87,7 +87,7 @@ Execution is **hybrid**, chosen per scenario:
 |-----------|----------|----------|
 | Scenario has a structured `exec` block + `--target` set | **HTTP** | Deterministic `net/http` request, judged on status code |
 | `--target` set, prose-only scenario | **AI-driven** | The AI actually performs the steps against the target and returns a verdict |
-| No `--target` | **Static** | Structural validation only (default, ≈ v0.1 behavior) |
+| No `--target` | **Static** | Structural validation only (default) |
 
 ```bash
 # Local app — run the AI tester directly (a sandboxed container can't reach host localhost)
@@ -188,4 +188,4 @@ See [MANDATE.md](./MANDATE.md) for contribution guidelines.
 
 ---
 
-*teststop v0.2 — Pre-release*
+*teststop v0.3.1*

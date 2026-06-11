@@ -142,7 +142,7 @@ The AI has a **5-minute timeout** per run.
 
 For each scenario with a `confidence_area` field, teststop updates that area's confidence score.
 
-In v0.1, all generated scenarios count as passes (the execution engine arrives in v0.2). The confidence update formula is:
+Without `--target`, all generated scenarios count as structural passes. With `--target`, real HTTP or AI-driven execution results drive confidence. The confidence update formula is:
 
 ```
 new_confidence = old + 0.19 × (1.0 - old)
@@ -184,8 +184,10 @@ A markdown report is always saved to `.teststop/reports/YYYY-MM-DD-HH-MM-SS.md` 
 ### No code execution
 teststop never runs your code. All scanning is static. This is intentional — it keeps teststop universal and safe to run in any environment.
 
-### No new configuration
-`teststop run` must work with zero setup. Adding project-specific config defeats the purpose.
+### Zero-config by default
+`teststop run` works with zero setup on any project. An optional `.teststop/config.yaml`
+lets you persist project-specific flag defaults — it never changes the zero-config default,
+and a missing file is never an error. See [Configuration](../reference/configuration.md).
 
 ### Self-reducing
 The test surface shrinks as confidence builds. teststop is designed to be needed less over time, not more.

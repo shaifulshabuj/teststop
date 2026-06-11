@@ -5,11 +5,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/shaifulshabuj/teststop/internal/ai"
+	"github.com/shaifulshabuj/teststop/internal/config"
 	"github.com/shaifulshabuj/teststop/internal/executor"
 	"github.com/shaifulshabuj/teststop/internal/mandate"
 	"github.com/shaifulshabuj/teststop/internal/memory"
@@ -63,6 +66,13 @@ func runCmdE(cmd *cobra.Command, args []string) error {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return fmt.Errorf("path: %w", err)
+	}
+
+	// 1b. Resolve run settings with precedence: config file < env < CLI flags.
+	//     This mutates the package-level flag vars in place so the rest of the
+	//     pipeline reads the resolved values transparently.
+	if err := resolveRunSettings(cmd, absPath); err != nil {
+		return err
 	}
 
 	// 2. Scan project.
@@ -226,6 +236,118 @@ func buildRunResult(
 		AdapterName:     adapterName,
 		Depth:           depth,
 	}
+}
+
+// resolveRunSettings applies the settings precedence for `teststop run`:
+//
+//	config file (.teststop/config.yaml)  <  TESTSTOP_RUN_* env vars  <  CLI flags
+//
+// It works bottom-up. It seeds the package-level flag vars from the config file
+// (lowest tier), then overlays env vars, then leaves any flag the user set
+// explicitly on the command line untouched (highest tier) — cobra's
+// Flags().Changed tells us which those are. Because cobra has already populated
+// the flag vars with their built-in defaults, a setting absent from every tier
+// keeps that default.
+func resolveRunSettings(cmd *cobra.Command, projectPath string) error {
+	cfg, err := config.Load(projectPath)
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+
+	changed := func(name string) bool { return cmd.Flags().Changed(name) }
+
+	// Tier 1 (lowest): config file. Only apply when the user did NOT pass the
+	// corresponding flag — an explicit flag (tier 3) always wins over the file,
+	// and env (tier 2) is layered on top below.
+	if cfg.Depth != nil && !changed("depth") {
+		runDepth = *cfg.Depth
+	}
+	if cfg.Output != nil && !changed("output") {
+		runOutput = *cfg.Output
+	}
+	if cfg.Threshold != nil && !changed("threshold") {
+		runThreshold = *cfg.Threshold
+	}
+	if cfg.NoColor != nil && !changed("no-color") {
+		runNoColor = *cfg.NoColor
+	}
+	if cfg.Quiet != nil && !changed("quiet") {
+		runQuiet = *cfg.Quiet
+	}
+	if cfg.Target != nil && !changed("target") {
+		runTarget = *cfg.Target
+	}
+	if cfg.Concurrency != nil && !changed("concurrency") {
+		runConcurrency = *cfg.Concurrency
+	}
+	if cfg.ExecTimeout != nil && !changed("exec-timeout") {
+		runExecTimeout = *cfg.ExecTimeout
+	}
+	if cfg.MaxRetries != nil && !changed("max-retries") {
+		runMaxRetries = *cfg.MaxRetries
+	}
+
+	// Tier 2: environment variables. These override the file but still yield to
+	// an explicit CLI flag. A malformed numeric/bool/duration env value is a
+	// hard error so misconfiguration fails loudly.
+	return applyRunEnv(changed)
+}
+
+// applyRunEnv overlays TESTSTOP_RUN_* environment variables onto the flag vars,
+// skipping any setting the user passed explicitly on the command line.
+func applyRunEnv(changed func(string) bool) error {
+	if v, ok := os.LookupEnv("TESTSTOP_RUN_DEPTH"); ok && !changed("depth") {
+		runDepth = v
+	}
+	if v, ok := os.LookupEnv("TESTSTOP_RUN_OUTPUT"); ok && !changed("output") {
+		runOutput = v
+	}
+	if v, ok := os.LookupEnv("TESTSTOP_RUN_THRESHOLD"); ok && !changed("threshold") {
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return fmt.Errorf("config: TESTSTOP_RUN_THRESHOLD=%q is not an integer: %w", v, err)
+		}
+		runThreshold = n
+	}
+	if v, ok := os.LookupEnv("TESTSTOP_RUN_NO_COLOR"); ok && !changed("no-color") {
+		b, err := strconv.ParseBool(strings.TrimSpace(v))
+		if err != nil {
+			return fmt.Errorf("config: TESTSTOP_RUN_NO_COLOR=%q is not a boolean: %w", v, err)
+		}
+		runNoColor = b
+	}
+	if v, ok := os.LookupEnv("TESTSTOP_RUN_QUIET"); ok && !changed("quiet") {
+		b, err := strconv.ParseBool(strings.TrimSpace(v))
+		if err != nil {
+			return fmt.Errorf("config: TESTSTOP_RUN_QUIET=%q is not a boolean: %w", v, err)
+		}
+		runQuiet = b
+	}
+	if v, ok := os.LookupEnv("TESTSTOP_RUN_TARGET"); ok && !changed("target") {
+		runTarget = v
+	}
+	if v, ok := os.LookupEnv("TESTSTOP_RUN_CONCURRENCY"); ok && !changed("concurrency") {
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return fmt.Errorf("config: TESTSTOP_RUN_CONCURRENCY=%q is not an integer: %w", v, err)
+		}
+		runConcurrency = n
+	}
+	if v, ok := os.LookupEnv("TESTSTOP_RUN_EXEC_TIMEOUT"); ok && !changed("exec-timeout") {
+		d, err := time.ParseDuration(strings.TrimSpace(v))
+		if err != nil {
+			return fmt.Errorf("config: TESTSTOP_RUN_EXEC_TIMEOUT=%q is not a duration: %w", v, err)
+		}
+		runExecTimeout = d
+	}
+	if v, ok := os.LookupEnv("TESTSTOP_RUN_MAX_RETRIES"); ok && !changed("max-retries") {
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return fmt.Errorf("config: TESTSTOP_RUN_MAX_RETRIES=%q is not an integer: %w", v, err)
+		}
+		runMaxRetries = n
+	}
+	return nil
 }
 
 // writeOutput dispatches to the correct reporter format.

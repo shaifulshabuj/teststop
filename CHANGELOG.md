@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`.teststop/config.yaml` loading** (v1.0). The optional project config file
+  that the docs have long advertised is now real. Every key maps one-to-one onto
+  an existing `teststop run` flag — no new settings are introduced. Settings
+  resolve with precedence **config file < `TESTSTOP_RUN_*` env var < explicit CLI
+  flag**, so zero-config behavior and explicit flags are both preserved. A
+  missing file is not an error; malformed YAML or an unknown key fails loudly.
+  See `.teststop/config.example.yaml` for the supported keys.
+
+---
+
 ## [v0.3.1] — 2026-06-08
 
 Correctness fixes from a Waymark usage review (#44).

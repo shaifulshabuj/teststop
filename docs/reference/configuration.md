@@ -1,16 +1,74 @@
-# Environment Variables
+# Configuration
 
-All teststop behavior can be controlled via environment variables — no config file needed.
+teststop is **zero-config by default** — `teststop run` works on any project with no setup.
+When you need project-specific tuning, two optional layers are available:
+an optional `.teststop/config.yaml` file and `TESTSTOP_RUN_*` environment variables.
 
 ---
 
-## Reference
+## Precedence (lowest → highest)
+
+```
+.teststop/config.yaml  <  TESTSTOP_RUN_* env var  <  explicit CLI flag
+```
+
+An explicit CLI flag always wins. A missing config file is never an error.
+
+---
+
+## `.teststop/config.yaml`
+
+An optional per-project configuration file. All keys map one-to-one onto `teststop run` flags — there are no settings here that don't also exist as flags. A missing file is ignored; a malformed file or unknown key is a hard error.
+
+```yaml
+# .teststop/config.yaml — all keys are optional
+depth: normal          # --depth
+output: text           # --output
+threshold: 80          # --threshold
+no_color: false        # --no-color
+quiet: false           # --quiet
+target: ""             # --target
+concurrency: 4         # --concurrency
+exec_timeout: 10s      # --exec-timeout
+max_retries: 2         # --max-retries
+```
+
+A reference copy lives at `.teststop/config.example.yaml` in your project after `teststop run` creates the `.teststop/` directory.
+
+---
+
+## `TESTSTOP_RUN_*` Environment Variables
+
+These variables mirror every `teststop run` flag. They override config.yaml but yield to an explicit CLI flag. Malformed values (wrong type, bad duration) are hard errors.
+
+| Variable | Flag equivalent | Type | Default |
+|----------|----------------|------|---------|
+| `TESTSTOP_RUN_DEPTH` | `--depth` | string | `normal` |
+| `TESTSTOP_RUN_OUTPUT` | `--output` | string | `text` |
+| `TESTSTOP_RUN_THRESHOLD` | `--threshold` | integer | `80` |
+| `TESTSTOP_RUN_NO_COLOR` | `--no-color` | boolean | `false` |
+| `TESTSTOP_RUN_QUIET` | `--quiet` | boolean | `false` |
+| `TESTSTOP_RUN_TARGET` | `--target` | string | _(none)_ |
+| `TESTSTOP_RUN_CONCURRENCY` | `--concurrency` | integer | `4` |
+| `TESTSTOP_RUN_EXEC_TIMEOUT` | `--exec-timeout` | duration | `10s` |
+| `TESTSTOP_RUN_MAX_RETRIES` | `--max-retries` | integer | `2` |
+
+```bash
+# Example: set depth and output in CI without touching flags
+TESTSTOP_RUN_DEPTH=aggressive TESTSTOP_RUN_OUTPUT=json teststop run
+```
+
+---
+
+## AI / Sandbox Environment Variables
+
+These variables control the AI adapter and sandbox isolation (not `run`-specific):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TESTSTOP_CLI` | `auto` | Which AI CLI to use |
-| `TESTSTOP_MODEL` | _(empty)_ | Model to pass to the AI CLI |
-| `TESTSTOP_SANDBOX` | `auto` | Sandbox isolation mode |
+| `TESTSTOP_CLI` | `auto` | Which AI CLI to use: `auto` \| `claude` \| `copilot` |
+| `TESTSTOP_MODEL` | _(empty)_ | Model flag passed to the AI CLI |
+| `TESTSTOP_SANDBOX` | `auto` | Sandbox mode: `auto` \| `required` \| `none` |
 
 ---
 
@@ -37,12 +95,12 @@ Passed as `--model <value>` to the AI CLI. Only applies to adapters that support
 
 | CLI | Support | Example |
 |-----|---------|---------|
-| `claude` | ✅ Yes | `TESTSTOP_MODEL=claude-opus-4-7` |
+| `claude` | ✅ Yes | `TESTSTOP_MODEL=claude-opus-4-8` |
 | `copilot` | ❌ Ignored | Model is controlled by GitHub Copilot subscription |
 
 ```bash
 TESTSTOP_MODEL=claude-sonnet-4-6 teststop run
-TESTSTOP_MODEL=claude-opus-4-7 teststop run --depth aggressive
+TESTSTOP_MODEL=claude-opus-4-8 teststop run --depth aggressive
 ```
 
 If not set, the Claude CLI uses its configured default model.
@@ -105,13 +163,3 @@ export TESTSTOP_SANDBOX=none
 export TESTSTOP_CLI=claude
 export TESTSTOP_SANDBOX=none
 ```
-
----
-
-## No Config File
-
-teststop intentionally has no configuration file. The six design non-negotiables include:
-
-> **ZERO CONFIGURATION** — `teststop run` must work with no setup on any project.
-
-Environment variables are the only customization layer.

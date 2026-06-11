@@ -1,0 +1,44 @@
+# teststop project config — OPTIONAL.
+#
+# Copy this file to .teststop/config.yaml to set per-project defaults for
+# `teststop run`. Every key below maps one-to-one onto a `teststop run` flag;
+# teststop adds no settings beyond what the flags already expose.
+#
+# If .teststop/config.yaml does not exist, teststop runs with its built-in
+# defaults — zero configuration remains the default experience.
+#
+# Settings resolve with this precedence (lowest wins last):
+#
+#   this file  <  TESTSTOP_RUN_* env var  <  explicit CLI flag
+#
+# i.e. an explicit `--threshold 90` always beats the env var, which beats the
+# value here. Omit any key to keep teststop's default for that setting.
+
+# Testing depth: light | normal | aggressive   (flag: --depth, env: TESTSTOP_RUN_DEPTH)
+depth: normal
+
+# Output format: json | text | markdown        (flag: --output, env: TESTSTOP_RUN_OUTPUT)
+output: text
+
+# Confidence threshold 0-100                    (flag: --threshold, env: TESTSTOP_RUN_THRESHOLD)
+threshold: 80
+
+# Disable ANSI color (useful for agents)        (flag: --no-color, env: TESTSTOP_RUN_NO_COLOR)
+no_color: false
+
+# Minimal output                               (flag: --quiet, env: TESTSTOP_RUN_QUIET)
+quiet: false
+
+# Base URL of a running system to execute against; empty = static validation
+# only.                                         (flag: --target, env: TESTSTOP_RUN_TARGET)
+target: ""
+
+# Max scenarios executed in parallel            (flag: --concurrency, env: TESTSTOP_RUN_CONCURRENCY)
+concurrency: 4
+
+# Per-request execution timeout (Go duration, e.g. 10s, 1m30s)
+#                                               (flag: --exec-timeout, env: TESTSTOP_RUN_EXEC_TIMEOUT)
+exec_timeout: 10s
+
+# Retries for transient HTTP execution failures (flag: --max-retries, env: TESTSTOP_RUN_MAX_RETRIES)
+max_retries: 2
