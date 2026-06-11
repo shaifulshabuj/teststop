@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.1.0] — 2026-06-12
+
+### Added
+
+- **ollama adapter — local-model backend** (`internal/ai/ollamacli.go`, closes #30).
+  teststop now ships a first-class ollama adapter that calls the ollama HTTP API at
+  `localhost:11434`. No subprocess, no API key, no account quota.
+
+  - Default model: `qwen3.6:latest` (36B Q4_K_M). Override with `TESTSTOP_MODEL`.
+  - `stream: false`, `think: false`, `num_ctx: 32768` per request.
+  - Automatic `<think>…</think>` block stripping for qwen3 models on older ollama builds.
+  - JSON-only output constraint appended to the mandate for local models (local models are
+    less instruction-following than cloud models; cloud adapters are unaffected).
+  - `IsOllamaAvailable()` pings `localhost:11434` with a 2s timeout for fast detection.
+
+- **Auto-detection precedence changed: ollama → claude → copilot.**
+  `TESTSTOP_CLI=auto` (the default) now prefers ollama when the local server is reachable.
+  Cloud CLIs (claude, copilot) are still fully supported but opt-in:
+  `TESTSTOP_CLI=claude` or `TESTSTOP_CLI=copilot`. `TESTSTOP_CLI=ollama` forces ollama only.
+
+  **Quality tradeoff (measured):** qwen3.6:latest generates 29–31 well-structured scenarios
+  in ~3–4 minutes. Waymark-specific scenarios (session expiry, approval tokens, IDOR,
+  partial rollbacks) showed high specificity. Scenario depth and edge-case creativity are
+  moderately lower than claude's output; for production runs where quota is not a constraint,
+  `TESTSTOP_CLI=claude` remains the higher-quality choice.
+
+- **Design document** (`docs/design/ollama-adapter.md`). Records the HTTP-vs-CLI decision,
+  `num_ctx` rationale, `think: false` approach, and JSON-suffix strategy.
+
+---
+
 ## [v1.0.1] — 2026-06-11
 
 ### Fixed

@@ -1,64 +1,139 @@
 # AI Adapters
 
-teststop works by shelling out to an AI CLI already on your PATH. No API SDK, no API keys, no vendor lock-in.
+teststop generates scenarios by calling an AI backend. The default is **ollama** (free,
+local, unlimited). Cloud CLIs (claude, copilot) are opt-in.
 
 ---
 
 ## How Adapters Work
 
-The `AIAdapter` interface has two methods:
+The `AIAdapter` interface:
 
 ```go
 type AIAdapter interface {
     GenerateScenarios(mandate string) ([]scenario.Scenario, error)
+    Prompt(input string) ([]byte, error)
     Name() string
 }
 ```
 
-teststop passes the full composed mandate as a single prompt argument and parses the JSON response. Both adapters have a 5-minute timeout.
+teststop passes the full composed mandate as a single prompt and parses the JSON array
+response. All adapters share the same JSON parser (`ParseScenariosFromJSON`) which strips
+markdown fences and rejects hollow batches.
 
 ---
 
 ## Auto-Detection
 
-teststop auto-detects which CLI is available. The `TESTSTOP_CLI` environment variable controls this:
+`TESTSTOP_CLI=auto` (the default) tries backends in this order:
+
+| Priority | Backend | Detection |
+|----------|---------|-----------|
+| 1 | **ollama** | `localhost:11434` responds within 2s |
+| 2 | claude | `claude` found on PATH |
+| 3 | copilot | `copilot` found on PATH |
+
+The `TESTSTOP_CLI` env var overrides auto-detection:
 
 | `TESTSTOP_CLI` | Behavior |
 |----------------|----------|
-| `auto` _(default)_ | Try `claude` first, then `copilot` |
+| `auto` _(default)_ | ollama → claude → copilot |
+| `ollama` | Use ollama only; error if not reachable |
 | `claude` | Use Claude CLI only; error if not found |
 | `copilot` | Use GitHub Copilot CLI only; error if not found |
 
 ```bash
-# Force Claude
+# Use local model (default when ollama is running)
+teststop run
+
+# Force Claude (opt-in — uses account quota)
 TESTSTOP_CLI=claude teststop run
 
-# Force Copilot
-TESTSTOP_CLI=copilot teststop run
+# Force a specific ollama model
+TESTSTOP_MODEL=qwen3:4b teststop run
+```
+
+**Quality tradeoff:** Local models (ollama) produce valid, useful scenarios at the cost of
+some specificity and edge-case creativity versus cloud models. For production use where quota
+is not a concern, `TESTSTOP_CLI=claude` gives higher-quality output. For development
+iteration and free CI runners, ollama is the right default.
+
+---
+
+## Ollama (default)
+
+Calls the [ollama](https://ollama.com) HTTP API at `localhost:11434`. No subprocess,
+no API key, no quota.
+
+**Default model:** `qwen3.6:latest` (36B, Q4_K_M — high-quality, ~3–4 min per run)
+
+**Model selection:**
+
+```bash
+# Use a smaller, faster model
+TESTSTOP_MODEL=qwen3:4b teststop run
+
+# Use gemma4
+TESTSTOP_MODEL=gemma4:latest teststop run
+```
+
+| Model | Size | Speed | Scenario Quality |
+|-------|------|-------|-----------------|
+| `qwen3.6:latest` | 23 GB | ~3–4 min | Best local quality |
+| `qwen3:4b` | 2.5 GB | ~30–60s | Good for quick iteration |
+| `gemma4:latest` | 9.6 GB | ~1–2 min | Good general quality |
+| `llama3.2:latest` | 2 GB | ~20–40s | Basic; less context-aware |
+
+**Timeout:** 10 minutes (local inference is slower than cloud)
+
+**Request shape:**
+
+```json
+{
+  "model": "qwen3.6:latest",
+  "prompt": "<mandate + JSON-only constraint>",
+  "stream": false,
+  "think": false,
+  "options": {"num_ctx": 32768}
+}
+```
+
+`think: false` disables the reasoning chain for qwen3 models. Even if the server ignores
+this (older ollama builds), the adapter strips `<think>...</think>` blocks automatically
+before parsing.
+
+**Quick-start:**
+
+```bash
+# Install ollama and pull a model
+brew install ollama
+ollama pull qwen3:4b        # 2.5 GB, fast
+ollama serve                 # starts the server
+
+# teststop auto-detects it
+teststop run
 ```
 
 ---
 
 ## Claude CLI
 
-Uses the official [Claude Code](https://claude.ai/download) CLI.
+Uses the official [Claude Code](https://claude.ai/download) CLI. Requires an active
+Claude subscription — runs consume account quota shared with all Claude Code agents.
 
 **Command executed:**
 
 ```bash
-claude -p "<mandate text>"
-# With optional model override:
-claude -p "<mandate text>" --model claude-sonnet-4-6
+claude -p "<mandate text>" --output-format json
+# With model override:
+claude -p "<mandate text>" --output-format json --model claude-sonnet-4-6
 ```
 
 **Model selection:**
 
 ```bash
-# Use a specific Claude model
-TESTSTOP_MODEL=claude-opus-4-7 teststop run
+TESTSTOP_MODEL=claude-opus-4-8 TESTSTOP_CLI=claude teststop run
 ```
-
-If `TESTSTOP_MODEL` is not set, the Claude CLI uses its default model.
 
 **Timeout:** 5 minutes
 
@@ -74,64 +149,41 @@ Uses the [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-
 copilot -p "<mandate text>" -s --no-ask-user
 ```
 
-The `-s` flag enables structured output mode. `--no-ask-user` prevents interactive prompts.
-
 **Timeout:** 5 minutes
 
 ---
 
 ## JSON Parsing
 
-The adapter expects the AI to return a JSON array of scenario objects. Both adapters use the same parser:
+All adapters use the same parser (`ParseScenariosFromJSON`):
 
-1. Strip any leading/trailing markdown fences (` ```json ` … ` ``` `)
-2. Unmarshal the JSON into `[]scenario.Scenario`
-
-If parsing fails, teststop returns an error with the raw output for debugging.
-
----
-
-## Checking Which Adapter Is Active
-
-```bash
-teststop status
-```
-
-The status output shows which AI adapter was used in the last run.
-
-Or peek at the last report:
-
-```bash
-teststop report
-```
-
----
-
-## Future Adapters
-
-The `AIAdapter` interface is designed to be extensible.
-
-- **Ollama** (local models) — planned in [issue #30](https://github.com/shaifulshabuj/teststop/issues/30). Not yet implemented; `TESTSTOP_CLI=ollama` is not a valid value today.
-- **OpenAI CLI** — community contribution welcome.
-
-To add a new adapter, implement the `AIAdapter` interface in `internal/ai/` and register it in `Detect()`.
+1. Strip leading/trailing markdown fences (` ```json ` … ` ``` `)
+2. Unmarshal into `[]scenario.Scenario`
+3. Reject hollow batches (every object missing `scenario_id` and `title`) — catches
+   event-stream format mismatches and empty-struct slippage
 
 ---
 
 ## Troubleshooting
 
-**"no AI CLI found on PATH"**
-: Install `claude` or `copilot` and make sure it's on your `PATH`. Verify with `which claude`.
+**"no AI backend found"**
+: Start ollama (`ollama serve`), or install `claude`/`copilot` and add to PATH.
 
-**"AI CLI returned empty output"**
-: The AI CLI may have failed silently. Run the CLI manually:
-  ```bash
-  claude -p "Return the word hello"
-  ```
+**ollama: HTTP request failed**
+: ollama is not running. Start it with `ollama serve`.
+
+**"model not found"**
+: Pull the model first: `ollama pull qwen3.6:latest`
+
+**"all N parsed scenarios are hollow"**
+: The model returned a non-scenario JSON structure. Check that the model is responding
+  to the prompt (run `ollama run qwen3:4b "say hello"` to verify).
 
 **"failed to parse scenarios JSON"**
-: The AI returned non-JSON output. This can happen if the AI CLI prompts for auth.
-  Authenticate your CLI first: `claude auth` or `copilot auth`.
+: The AI returned non-JSON output. With cloud adapters, authenticate first:
+  `claude auth` or `copilot auth`. With ollama, try a model with a larger context:
+  `TESTSTOP_MODEL=qwen3.6:latest teststop run`.
 
 **Timeout**
-: The AI CLI has a 5-minute timeout. For very large projects, try `--depth light` to reduce the mandate size.
+: For large projects, try `--depth light` to reduce mandate size. With ollama and
+  qwen3.6:latest, a normal-depth run takes ~3–4 minutes.

@@ -37,7 +37,7 @@ cd teststop
 go build -o teststop ./cmd/teststop
 ```
 
-**Requirements:** `claude` or `copilot` CLI must be on your PATH. No API keys needed.
+**Requirements:** [ollama](https://ollama.com) (default, free) **or** `claude`/`copilot` CLI on your PATH. No API keys needed for local runs.
 
 ---
 
@@ -149,6 +149,32 @@ teststop maintains a confidence score per system area in `.teststop/memory.json`
 After ~15 clean passes, an area is considered proven stable. teststop moves on.
 
 **Commit `.teststop/memory.json` to version control** — it's the accumulated proof that your system works.
+
+---
+
+## AI Backend
+
+teststop supports three AI backends. The default is **ollama** — free, local, and unlimited.
+
+| Backend | How to use | Quality | Cost |
+|---------|-----------|---------|------|
+| **ollama** (default) | `ollama serve` + `ollama pull qwen3.6:latest` | Very good | Free |
+| claude | `TESTSTOP_CLI=claude teststop run` | Best | Account quota |
+| copilot | `TESTSTOP_CLI=copilot teststop run` | Good | Subscription |
+
+```bash
+# Quick-start with local model
+brew install ollama
+ollama pull qwen3:4b   # 2.5 GB, fast; or qwen3.6:latest for best quality
+ollama serve
+teststop run           # auto-detects ollama
+```
+
+Auto-detection order: **ollama → claude → copilot**. Set `TESTSTOP_CLI=claude` to always
+use Claude regardless of ollama availability.
+
+See [AI Adapters](https://shaifulshabuj.github.io/teststop/guide/ai-adapters/) for model
+comparison, troubleshooting, and the quality tradeoff between local and cloud backends.
 
 ---
 
