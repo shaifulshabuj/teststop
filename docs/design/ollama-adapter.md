@@ -130,14 +130,36 @@ qwen3.6:latest supports 262k tokens but ollama default `num_ctx` is 2048. We set
 
 ---
 
+## Real-Run Results (vs waymark API, 2026-06-12)
+
+| Model | Scenarios | Time | Parse failures | Outcome |
+|-------|-----------|------|----------------|---------|
+| `qwen3.6:latest` | 31 | 184s | 0 | ✅ High quality — IDOR, race conditions, token attacks |
+| `gemma4:latest` | 52 | 499s | 0 (after escape fix) | ✅ Most thorough — good specificity, 3-pass parser needed |
+| `qwen3:4b` | — | — | 100% | ❌ Not viable — outputs reasoning prose only, never reaches JSON |
+
+**Unexpected resilience fixes** required by real model behavior (both now tested):
+
+1. **Prose preamble/suffix** (`extractJSONArray`): qwen3:4b-style models emit a planning
+   monologue before the array. Two-pass: direct unmarshal → extract `[…]` span.
+2. **Invalid escape sequences** (`sanitizeJSONEscapes`): gemma4 emits `\xNN` hex
+   notation. Three-pass: sanitize with `\([^"\\\/bfnrtu])` → `$1` then retry.
+
+**Model floor:** ~10B parameters. Sub-10B models spend their output budget on
+reasoning rather than JSON generation — the JSON-only suffix is insufficient.
+
+---
+
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `internal/ai/ollamacli.go` | New — OllamaCLI adapter |
-| `internal/ai/adapter.go` | Update `Detect()` and `IsOllamaAvailable()` |
-| `internal/ai/ollamacli_test.go` | New — unit tests with canned responses |
-| `docs/guide/ai-adapters.md` | Add ollama section, update auto-detection table |
+| `internal/ai/ollamacli.go` | New — OllamaCLI adapter (HTTP, no sandbox) |
+| `internal/ai/ollamacli_test.go` | New — 11 unit tests with httptest canned responses |
+| `internal/ai/adapter.go` | `Detect()` precedence, `IsOllamaAvailable()`, three-pass parser, prose extractor, escape sanitizer |
+| `internal/ai/adapter_test.go` | +4 tests: proseBeforeArray, proseAfterArray, invalidEscapes, (existing hollowArray retained) |
+| `docs/guide/ai-adapters.md` | Rewritten — ollama section, model table with real numbers |
+| `docs/reference/configuration.md` | TESTSTOP_CLI/MODEL updated for ollama |
 | `docs/design/ollama-adapter.md` | This file |
-| `README.md` | Update backend section |
-| `CHANGELOG.md` | v1.1.0 draft |
+| `README.md` | Backend section added |
+| `CHANGELOG.md` | v1.1.0 with real-run quality table |
