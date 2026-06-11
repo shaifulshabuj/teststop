@@ -21,8 +21,13 @@ type AIAdapter interface {
 	Name() string
 }
 
-// Detect auto-detects which AI CLI is available: claude → copilot → error.
-// Respects TESTSTOP_CLI env var: "claude", "copilot", "auto" (default).
+// Detect auto-detects which AI backend is available.
+// Respects TESTSTOP_CLI env var: "ollama", "claude", "copilot", "auto" (default).
+//
+// Auto-detection precedence: ollama (localhost:11434) → claude → copilot.
+// ollama is preferred because local-model runs are free and unlimited; cloud
+// CLIs (claude, copilot) share account quota with the whole agent team.
+// To opt in to claude: TESTSTOP_CLI=claude.
 func Detect() (AIAdapter, error) {
 	cli := os.Getenv("TESTSTOP_CLI")
 	if cli == "" {
@@ -30,6 +35,11 @@ func Detect() (AIAdapter, error) {
 	}
 
 	switch cli {
+	case "ollama":
+		if !IsOllamaAvailable() {
+			return nil, fmt.Errorf("ai: TESTSTOP_CLI=ollama but ollama not reachable at %s", ollamaDefaultBaseURL)
+		}
+		return NewOllamaCLI(), nil
 	case "claude":
 		if _, err := exec.LookPath("claude"); err != nil {
 			return nil, fmt.Errorf("ai: TESTSTOP_CLI=claude but claude not found on PATH")
@@ -41,13 +51,16 @@ func Detect() (AIAdapter, error) {
 		}
 		return NewCopilotCLI(), nil
 	default: // auto
+		if IsOllamaAvailable() {
+			return NewOllamaCLI(), nil
+		}
 		if _, err := exec.LookPath("claude"); err == nil {
 			return NewClaudeCLI(), nil
 		}
 		if _, err := exec.LookPath("copilot"); err == nil {
 			return NewCopilotCLI(), nil
 		}
-		return nil, fmt.Errorf("ai: no AI CLI found on PATH (install claude or copilot, or set TESTSTOP_CLI)")
+		return nil, fmt.Errorf("ai: no AI backend found (start ollama, install claude or copilot, or set TESTSTOP_CLI)")
 	}
 }
 
