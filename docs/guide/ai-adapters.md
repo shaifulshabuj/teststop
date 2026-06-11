@@ -79,10 +79,13 @@ TESTSTOP_MODEL=gemma4:latest teststop run
 
 | Model | Size | Speed | Scenario Quality |
 |-------|------|-------|-----------------|
-| `qwen3.6:latest` | 23 GB | ~3–4 min | Best local quality |
-| `qwen3:4b` | 2.5 GB | ~30–60s | Good for quick iteration |
+| `qwen3.6:latest` | 23 GB | ~3–4 min | Best local quality (recommended) |
 | `gemma4:latest` | 9.6 GB | ~1–2 min | Good general quality |
-| `llama3.2:latest` | 2 GB | ~20–40s | Basic; less context-aware |
+| `qwen3:4b` | 2.5 GB | — | **Not viable** — outputs reasoning prose, never reaches JSON |
+| `llama3.2:latest` | 2 GB | ~20–40s | Untested; likely similar limitation |
+
+> **Note:** Sub-10B parameter models typically lack sufficient instruction-following to generate
+> 30-item JSON arrays reliably. Use `qwen3.6:latest` or `gemma4:latest` for reliable output.
 
 **Timeout:** 10 minutes (local inference is slower than cloud)
 

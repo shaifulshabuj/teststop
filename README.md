@@ -165,9 +165,9 @@ teststop supports three AI backends. The default is **ollama** — free, local, 
 ```bash
 # Quick-start with local model
 brew install ollama
-ollama pull qwen3:4b   # 2.5 GB, fast; or qwen3.6:latest for best quality
+ollama pull qwen3.6:latest   # 23 GB, best quality
 ollama serve
-teststop run           # auto-detects ollama
+teststop run                  # auto-detects ollama
 ```
 
 Auto-detection order: **ollama → claude → copilot**. Set `TESTSTOP_CLI=claude` to always
