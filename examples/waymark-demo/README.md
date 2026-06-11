@@ -8,12 +8,12 @@ middleware using teststop's real AI-driven path. Captured 2026-06-11.
 | File | Description |
 |------|-------------|
 | `mandate.md` | The exact mandate sent to the AI — composed from waymark's scanned context + memory |
-| `run_report.json` | Full JSON output from `teststop run` (52 scenarios, exit code 1 = review needed) |
+| `run_report.json` | Full JSON output from `teststop run` (15 scenarios, exit code 1 = review needed) |
 | `run_report.md` | Markdown summary auto-saved by teststop |
 
 ## How to replay
 
-Requires: `teststop` ≥ v1.0 and `claude` CLI on PATH, authenticated.
+Requires: `teststop` ≥ v1.0.1 and `claude` CLI on PATH, authenticated.
 
 ```bash
 # From this repo root:
@@ -36,8 +36,8 @@ teststop run --path ../waymark --depth light
 ```
 adapter:    claude
 depth:      light
-scenarios:  52
-exit code:  1  (confidence below 80% threshold — first real run, memory at zero)
+scenarios:  15  (re-captured 2026-06-11 after fix/blank-scenarios; prior artifact had hollow structs)
+exit code:  1   (confidence below 80% threshold — memory partially populated from prior runs)
 ```
 
 The exit code of 1 is expected for a first run: teststop's confidence memory starts at

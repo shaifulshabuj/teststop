@@ -3,1595 +3,628 @@
   "project_path": "/Volumes/SATECHI_WD_BLACK_2/dev/waymark",
   "language": "TypeScript",
   "system_type": "api",
-  "timestamp": "2026-06-11T10:30:39.653177+09:00",
-  "duration_ms": 203513388667,
+  "timestamp": "2026-06-11T21:54:25.399945+09:00",
+  "duration_ms": 203109146084,
   "scenarios": [
     {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
+      "scenario_id": "approve-button-double-click-race",
+      "title": "Double-clicking Approve on a slow connection approves twice",
+      "user_perspective": "I'm a tech lead reviewing my AI agent's pending file changes from a coffee shop. The agent is blocked waiting on me and I just want to unblock it fast before my next meeting.",
+      "preconditions": [
+        "An agent action is sitting in 'pending approval' state and the dashboard is open in my browser",
+        "I'm on flaky coffee-shop Wi-Fi where requests take 4-8 seconds",
+        "This is my third approval today, so I'm clicking on muscle memory"
+      ],
+      "steps": [
+        "I clicked the Approve button on the pending action",
+        "Nothing visibly changed for several seconds — no spinner, no confirmation",
+        "I clicked Approve again, twice more, assuming the first click didn't register",
+        "All my clicks eventually went through once the Wi-Fi recovered"
+      ],
+      "chaos_factors": [
+        "4-8 second network latency made every click feel like a failure",
+        "All three clicks arrived at the server within the same second, two of them while the first was still being processed"
+      ],
+      "expected_behavior": "Exactly one approval is recorded. The duplicate clicks are recognized as the same intent and either ignored or answered with 'already approved'. The agent's action executes exactly once.",
+      "failure_modes": [
+        "The action is approved and executed multiple times, running the agent's command two or three times",
+        "The audit trail records three separate approval events with the same timestamp, making the history untrustworthy",
+        "The second approval crashes against state mutated by the first, returning a raw 500 to the dashboard"
+      ],
+      "priority": "critical",
+      "confidence_area": "api/actions/:action_id/approve",
+      "is_edge_case": true
+    },
+    {
+      "scenario_id": "approve-vs-reject-two-teammates-same-instant",
+      "title": "I approve from the dashboard while my teammate rejects from Slack",
+      "user_perspective": "I'm one of two on-call engineers sharing approval duty. We both got pinged about the same risky agent action and neither of us coordinated before responding.",
+      "preconditions": [
+        "A pending action notified both me (dashboard open on laptop) and my teammate (Slack on phone)",
+        "We are both authorized approvers and don't know the other is responding",
+        "The action is a destructive one — deleting files — which is why it needed approval"
+      ],
+      "steps": [
+        "I read the action details on the dashboard and clicked Approve",
+        "At nearly the same moment, my teammate tapped Reject on the Slack notification",
+        "We both saw what looked like a success response on our own screens",
+        "Five minutes later we compared notes and realized we'd given opposite answers"
+      ],
+      "chaos_factors": [
+        "Two conflicting decisions on the same action arrived within milliseconds of each other from two different entry points (dashboard API and Slack webhook)",
+        "Neither person had any signal the other was acting"
+      ],
+      "expected_behavior": "Exactly one decision wins. The loser gets a clear message like 'This action was already rejected by Sarah 2 seconds ago' — not a success screen. Both the dashboard and Slack reflect the same final state.",
+      "failure_modes": [
+        "Both requests report success, so each person believes their decision stood — and nobody knows whether the destructive command actually ran",
+        "The action executes (approved) but the record says rejected, or vice versa",
+        "Slack shows 'Rejected ✓' while the dashboard shows 'Approved ✓' permanently"
+      ],
+      "priority": "critical",
+      "confidence_area": "api/actions/:action_id/reject",
+      "is_edge_case": true
+    },
+    {
+      "scenario_id": "email-approve-link-prefetched-by-security-scanner",
+      "title": "Corporate email scanner clicks my approve link before I do",
+      "user_perspective": "I'm an engineering manager at a company that runs Outlook with Safe Links. I get approval requests by email and click the Approve link when I've actually read the request.",
+      "preconditions": [
+        "An approval email with one-click Approve and Reject links landed in my corporate inbox",
+        "My company's email security gateway automatically fetches every link in incoming mail to scan it",
+        "I have not yet opened the email"
+      ],
+      "steps": [
+        "The email arrived in my inbox while I was in a meeting",
+        "An hour later I opened it, read the action details carefully, and decided to reject it",
+        "I clicked the Reject link",
+        "I got a confusing page saying the action had already been decided"
+      ],
+      "chaos_factors": [
+        "An automated scanner issued GET requests to both the approve and reject links within seconds of email delivery, before any human saw them",
+        "The scanner's request is indistinguishable from a real click at the network level"
+      ],
+      "expected_behavior": "A simple GET prefetch of the link must not finalize an approval decision — the link should land on a confirmation page requiring a deliberate human step. When I later reject, my decision is the one that counts.",
+      "failure_modes": [
+        "The scanner's GET silently approves a destructive action no human ever reviewed — a complete bypass of the approval gate",
+        "The scanner hits both links and the system records approve-then-reject or crashes on the contradiction",
+        "My real rejection is refused with 'token already used' and there is no way to see who or what used it"
+      ],
+      "priority": "critical",
+      "confidence_area": "api/actions/approve-via-token",
+      "is_edge_case": true,
+      "exec": {
+        "mode": "http",
+        "method": "GET",
+        "path": "/api/actions/approve-via-token",
+        "expected_status": 400
+      }
+    },
+    {
+      "scenario_id": "slack-retry-after-slow-handler-ack",
+      "title": "Slack re-sends my Approve tap because the server answered too slowly",
+      "user_perspective": "I'm an SRE approving agent actions from my phone in the elevator. Slack is the only way I interact with this system — I've never opened the dashboard.",
+      "preconditions": [
+        "A pending action posted an approval message with buttons in our team's Slack channel",
+        "My phone is on one bar of LTE in an elevator",
+        "The server is under load and responding slowly"
+      ],
+      "steps": [
+        "I tapped the Approve button in the Slack message",
+        "The button showed a spinner that never resolved, so I tapped it once more",
+        "I put my phone away and got off the elevator",
+        "Later the Slack message showed a strange state and a teammate asked why the action ran twice"
+      ],
+      "chaos_factors": [
+        "Slack automatically retries an interaction payload when it isn't acknowledged within 3 seconds, so the server received my tap multiple times with identical content",
+        "My own second tap added a third identical payload",
+        "Retries arrived while the original was still mid-processing"
+      ],
+      "expected_behavior": "The approval is processed once regardless of how many duplicate Slack payloads arrive. The Slack message updates to a single clear final state ('Approved by Raj').",
+      "failure_modes": [
+        "Each retried payload triggers a separate approval and execution of the action",
+        "The handler crashes on the duplicate, Slack shows the user a generic 'something went wrong', and the approval state is unknown",
+        "The Slack message is updated multiple times into a corrupted or contradictory layout"
+      ],
+      "priority": "high",
+      "confidence_area": "api/slack/interact",
+      "is_edge_case": true
+    },
+    {
+      "scenario_id": "policy-paste-smart-quotes-from-google-doc",
+      "title": "Pasting policy rules from a Google Doc breaks on smart quotes",
+      "user_perspective": "I'm the team admin updating our approval policies. Our security team wrote the new policy rules in a shared Google Doc, and I'm copy-pasting them into the policy editor to apply them.",
+      "preconditions": [
+        "I have working policies configured today and the system is in active use by my team",
+        "The new rules were authored in Google Docs, which silently converts straight quotes to curly quotes and inserts non-breaking spaces",
+        "I'm doing this at 5:45pm before leaving for the day"
+      ],
+      "steps": [
+        "I selected the policy block in the Google Doc and copied it",
+        "I pasted it into the policy configuration and hit Save",
+        "I saw something that looked like it might be an error but left for the day",
+        "The next morning my team said every single agent action was being blocked — or worse, none were"
+      ],
+      "chaos_factors": [
+        "The pasted text contained curly quotes (“ ”), a non-breaking space, and a trailing newline — visually identical to valid input",
+        "I didn't verify the save worked before leaving"
+      ],
+      "expected_behavior": "The save is rejected immediately with a message pointing at the exact character and position that's invalid ('unexpected character “ at line 3'), and crucially the previous working policy stays in effect untouched.",
+      "failure_modes": [
+        "The malformed policy is accepted and partially applied, leaving the system in a half-old half-new policy state",
+        "The save fails with a raw parser stack trace and the existing policy is wiped, failing open so dangerous actions auto-approve overnight",
+        "A 500 error with no indication whether the old policy is still active"
+      ],
+      "priority": "high",
+      "confidence_area": "api/config/policies",
+      "is_edge_case": true,
+      "exec": {
+        "mode": "http",
+        "method": "PUT",
+        "path": "/api/config/policies",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{“policies”: [{“match”: “*”, “action”: “approve”}]}",
+        "expected_status": 400
+      }
+    },
+    {
+      "scenario_id": "config-two-tabs-read-modify-write-overwrite",
+      "title": "Editing config in two tabs silently reverts my earlier change",
+      "user_perspective": "I'm a solo developer who keeps the waymark dashboard pinned in two browser windows — one on each monitor. I tweak settings whenever something annoys me.",
+      "preconditions": [
+        "The dashboard config page has been open in two browser tabs since yesterday",
+        "Both tabs loaded the configuration when they were opened, hours apart"
+      ],
+      "steps": [
+        "In the left tab, I changed the notification setting and saved it",
+        "An hour later, in the right tab — which still showed yesterday's values — I changed an unrelated timeout setting and saved",
+        "Both saves reported success",
+        "The next day I noticed my notification change from the left tab had silently disappeared"
+      ],
+      "chaos_factors": [
+        "The second tab submitted a full config object built from stale data loaded hours earlier",
+        "No conflict detection exists between the read and the write"
+      ],
+      "expected_behavior": "Either the second save only changes the field I actually touched, or the system detects that the config changed since my tab loaded it and warns me before overwriting. Silently reverting an earlier change is the one thing that shouldn't happen.",
+      "failure_modes": [
+        "Classic lost update: the stale tab's full-object save overwrites the earlier change with no warning to anyone",
+        "Settings revert without any audit trail, so the user blames themselves or the tool randomly 'forgetting' settings"
+      ],
+      "priority": "high",
+      "confidence_area": "api/config",
       "is_edge_case": false
     },
     {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
+      "scenario_id": "paginated-actions-page-zero-huge-limit",
+      "title": "Hand-typing a page URL with page 0 and an enormous page size",
+      "user_perspective": "I'm an auditor going through last month's agent action history. The pagination is slow at the default page size, so I edited the URL by hand to get everything at once — that trick works on most sites.",
+      "preconditions": [
+        "There are several thousand historical actions in the system",
+        "I'm viewing the paginated action list and can see the page parameters in my browser's address bar"
+      ],
+      "steps": [
+        "I changed the page number in the URL to 0 because I assumed counting starts at zero",
+        "When that looked wrong, I changed the page size to 999999 to just get everything",
+        "Then I typed a page number way past the end, and once accidentally left a comma in the number (1,000) from the spreadsheet I was cross-referencing"
+      ],
+      "chaos_factors": [
+        "Hand-edited query parameters: page=0, limit=999999, page=50000, and limit=1,000 with a literal comma",
+        "Thousands of rows in the table make any unbounded query expensive"
+      ],
+      "expected_behavior": "Out-of-range values are clamped or rejected with a readable message. Page 0 either means page 1 or says 'pages start at 1'. A giant limit gets capped, not honored. A page past the end shows an empty list, not an error. Nothing I type into the URL can hang the server.",
+      "failure_modes": [
+        "limit=999999 is honored verbatim and the server tries to serialize the entire history in one response, hanging or running out of memory",
+        "page=0 causes a negative offset and a raw database error leaks to the response",
+        "'1,000' is parsed as NaN and the handler crashes with a 500 instead of a validation message"
+      ],
+      "priority": "medium",
+      "confidence_area": "api/actions/paginated",
+      "is_edge_case": true,
+      "exec": {
+        "mode": "http",
+        "method": "GET",
+        "path": "/api/actions/paginated?page=0\u0026limit=999999",
+        "expected_status": 400
+      }
+    },
+    {
+      "scenario_id": "rollback-partial-on-stale-overnight-action-list",
+      "title": "Picking files to roll back from a list that went stale overnight",
+      "user_perspective": "I'm a developer who noticed last evening that my agent made a few changes I didn't like. I opened the partial rollback screen, got pulled into dinner, and left the tab open. This morning I'm finishing what I started.",
+      "preconditions": [
+        "Last night I opened the rollback selection screen for a session and checked three of its actions to undo",
+        "I left the tab open overnight without submitting",
+        "Overnight, the agent session continued running and produced more actions, some touching the same files I'd selected"
+      ],
+      "steps": [
+        "This morning I returned to the still-open tab showing last night's action list",
+        "I clicked the rollback button with my three selections from yesterday",
+        "I expected those three changes to be undone and everything else left alone"
+      ],
+      "chaos_factors": [
+        "The action list in my tab is 14 hours stale; newer actions have since modified the same files",
+        "Rolling back yesterday's action on a file that was changed again afterwards is ambiguous — and I have no idea that's the case"
+      ],
+      "expected_behavior": "The system notices my selection is based on outdated state and tells me 'this session has 12 newer actions, 2 of which touch the files you selected — review before rolling back.' If it proceeds, it must not destroy work done after my snapshot without warning me.",
+      "failure_modes": [
+        "The rollback blindly reverts files to last night's state, silently destroying everything the agent did overnight — unrecoverable data loss",
+        "The rollback half-completes, fails on a conflicted file, and leaves the working directory in a mixed state with no report of what was and wasn't reverted",
+        "The stale action IDs no longer resolve and the request returns a raw 500 with no explanation"
+      ],
+      "priority": "critical",
+      "confidence_area": "api/sessions/:session_id/rollback-partial",
+      "is_edge_case": true
+    },
+    {
+      "scenario_id": "pause-in-dashboard-resume-while-status-stale",
+      "title": "Paused in one window, resumed in another, now both show different states",
+      "user_perspective": "I'm a developer running an agent session. I paused it before lunch from the dashboard on my desktop. After lunch I'm on my laptop and I want it running again.",
+      "preconditions": [
+        "A session is running and visible in dashboards open on two machines",
+        "I paused the session from my desktop before stepping away; the laptop dashboard still shows it as 'running'"
+      ],
+      "steps": [
+        "From my laptop, which still said 'running', I clicked Pause — on a session that was already paused",
+        "Confused by the response, I then clicked Resume twice in a row because the first click didn't seem to do anything",
+        "Back at my desktop, that dashboard still showed the session as paused, so I clicked Resume there too"
+      ],
+      "chaos_factors": [
+        "Pause sent to an already-paused session, then resume sent to an already-resumed one, from clients holding stale status",
+        "Three state-change commands within a minute from two machines"
+      ],
+      "expected_behavior": "Pausing a paused session and resuming a running one are harmless no-ops with a friendly 'already paused/running' message. Whatever sequence of redundant clicks I make, the session ends in exactly the state of my last action, and both dashboards converge to show it.",
+      "failure_modes": [
+        "Redundant pause/resume throws a 500 instead of a graceful no-op",
+        "The pause and resume counters get out of sync so the session is stuck — shown as running but actually not processing anything",
+        "The two dashboards permanently disagree about the session state until a manual restart"
+      ],
+      "priority": "high",
+      "confidence_area": "api/sessions/:session_id/resume",
+      "is_edge_case": true
+    },
+    {
+      "scenario_id": "team-member-duplicate-add-trailing-newline",
+      "title": "Adding a teammate twice with a pasted email that has a trailing newline",
+      "user_perspective": "I'm the team admin onboarding a new hire before her start date tomorrow. I copied her email out of the HR spreadsheet. Our office Wi-Fi is having a bad day.",
+      "preconditions": [
+        "I'm on the team members page with admin rights",
+        "I copied the new hire's email from a spreadsheet cell, which included a trailing newline I can't see",
+        "The page is taking 5+ seconds to respond to anything"
+      ],
+      "steps": [
+        "I pasted 'priya.sharma@acme.com\\n' into the email field and clicked Add",
+        "Nothing happened for several seconds, so I clicked Add again",
+        "Later, unsure it worked, I typed her email manually — 'Priya.Sharma@acme.com' with capitals — and added her once more"
+      ],
+      "chaos_factors": [
+        "Trailing newline from a spreadsheet paste, invisible in the input field",
+        "Double-click during a slow network round trip",
+        "Same address re-entered later with different letter casing"
+      ],
+      "expected_behavior": "The email is trimmed before saving, the double-click results in one member, and the differently-cased re-entry is recognized as a duplicate with a clear 'Priya is already on the team' message. The team list shows exactly one Priya.",
+      "failure_modes": [
+        "Three member records exist for one person: one with an embedded newline, two casing variants — and approval notifications to the newline-corrupted address silently fail",
+        "The duplicate add throws a raw database uniqueness error at the admin instead of a readable message",
+        "Removing the duplicates later via the delete button removes the wrong one"
+      ],
+      "priority": "medium",
+      "confidence_area": "api/team/members",
+      "is_edge_case": false,
+      "exec": {
+        "mode": "http",
+        "method": "POST",
+        "path": "/api/team/members",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"email\": \"priya.sharma@acme.com\\n\", \"name\": \"Priya Sharma\\n\"}",
+        "expected_status": 200,
+        "concurrency": 5
+      }
+    },
+    {
+      "scenario_id": "approval-route-concurrent-edit-by-two-admins",
+      "title": "Two admins edit the same approval route and one edit vanishes",
+      "user_perspective": "I'm one of two platform admins. After an incident review, my co-admin and I both went to tighten the same approval route — without telling each other, from different offices.",
+      "preconditions": [
+        "An approval route exists that both of us have permission to edit",
+        "We both opened the route's edit form within the same five minutes, each seeing the same original values"
+      ],
+      "steps": [
+        "I changed the route to require approval for shell commands and saved",
+        "Two minutes later my co-admin, whose form still showed the original values, changed the notification target and saved",
+        "Both of us saw a success message and moved on",
+        "A week later a shell command sailed through without approval and we discovered my change had been wiped"
+      ],
+      "chaos_factors": [
+        "Two full-object updates to the same route from forms loaded before either edit",
+        "The overwrite is silent — a security-relevant restriction disappears with no warning and no record of why"
+      ],
+      "expected_behavior": "The second save either merges cleanly (different fields) or is blocked with 'this route was modified by Alex 2 minutes ago — reload before saving'. A security rule must never silently disappear.",
+      "failure_modes": [
+        "Last-write-wins silently discards a security-tightening change, re-opening the exact hole the incident review closed",
+        "There's no change history on routes, so nobody can tell when or how the rule vanished",
+        "The conflicting write corrupts the route so it matches nothing and all actions bypass it"
+      ],
+      "priority": "high",
+      "confidence_area": "api/approval-routes/:route_id",
+      "is_edge_case": true
+    },
+    {
+      "scenario_id": "session-status-checked-after-machine-slept",
+      "title": "Checking on a session from a phone after my laptop fell asleep",
+      "user_perspective": "I'm a developer who kicked off a long agent session at the office, closed my laptop lid, and am now checking on it from my phone on the train home.",
+      "preconditions": [
+        "I started an agent session on my office laptop hours ago and have its dashboard link bookmarked on my phone",
+        "My laptop went to sleep, abruptly suspending the process that was running the session",
+        "My phone's mobile connection drops in and out of tunnels"
+      ],
+      "steps": [
+        "On the train, I opened the bookmarked session page on my phone",
+        "The page took forever, so I pulled to refresh it three times in a tunnel",
+        "I wanted one simple answer: is my session still running, paused, or dead?"
+      ],
+      "chaos_factors": [
+        "The session's underlying process is suspended, not cleanly stopped — its real state matches none of the normal labels",
+        "Repeated refreshes from a connection that drops mid-request",
+        "Hours have passed since the last heartbeat from the laptop"
+      ],
+      "expected_behavior": "The status page answers honestly: 'no heartbeat from this session for 3 hours — it may be suspended or disconnected', rather than confidently showing 'running' based on stale data or hanging forever trying to reach a sleeping machine.",
+      "failure_modes": [
+        "Status shows 'running' indefinitely for a session whose process has been asleep for hours, so I don't find out it died until tomorrow",
+        "The status request hangs waiting on the unreachable process and my refreshes pile up server-side",
+        "A stale or unknown session ID returns a raw 500 instead of a clear 'session not found or expired'"
+      ],
+      "priority": "medium",
+      "confidence_area": "api/sessions/:session_id/status",
       "is_edge_case": false
     },
     {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
+      "scenario_id": "approval-route-name-pasted-from-slack-with-emoji",
+      "title": "Creating an approval route named with emoji and formatting from Slack",
+      "user_perspective": "I'm a team admin creating a new approval route. The route's name and description were decided in a Slack thread, so I'm copy-pasting them straight from Slack to keep things consistent.",
+      "preconditions": [
+        "I have admin rights and am on the new approval route form for the first time",
+        "The agreed name in Slack is '🚨 prod-deploys — *needs 2 approvers*' and the description is three paragraphs with bullet points"
+      ],
+      "steps": [
+        "I pasted the name with the emoji, the em-dash, and Slack's asterisk formatting into the name field",
+        "I pasted the multi-paragraph description, which included newlines and a bullet list, into the description field",
+        "I clicked Create and went back to Slack to confirm it was done"
+      ],
+      "chaos_factors": [
+        "Emoji, em-dash, markdown asterisks, and embedded newlines in fields that probably expected short plain identifiers",
+        "The route name later flows into Slack notifications and email subjects, where the characters get re-interpreted"
+      ],
+      "expected_behavior": "Either the name is accepted and renders correctly everywhere it later appears (list views, Slack messages, email subjects), or the form clearly says which characters aren't allowed. No silent truncation or mangling.",
+      "failure_modes": [
+        "The route is created but the emoji is stored as mojibake, and Slack notifications referencing it render garbage so approvers don't recognize the route",
+        "The newline in the name breaks the route list rendering or the matching logic, so the route never matches anything and approvals are silently skipped",
+        "Creation fails with an unreadable serialization error and no hint about which field was the problem"
+      ],
+      "priority": "medium",
+      "confidence_area": "api/approval-routes",
+      "is_edge_case": true
     },
     {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
+      "scenario_id": "old-bookmarked-stop-button-double-fire",
+      "title": "Stopping a project from an old bookmarked page while also using the new hub",
+      "user_perspective": "I'm a developer who bookmarked the project control page months ago. The team has since started using the newer hub view, but my bookmark still works and I don't know there's a difference.",
+      "preconditions": [
+        "A project with an active agent session is mid-task",
+        "I have the old project page open from my bookmark, and the new hub view open in another tab from a teammate's link"
+      ],
+      "steps": [
+        "Something looked wrong with the agent, so I hit Stop on my old bookmarked page",
+        "The page didn't show any obvious confirmation, so I switched to the hub tab and hit Stop there too",
+        "Then I tried to resume the project from the hub to start over"
+      ],
+      "chaos_factors": [
+        "Two different stop entry points (the legacy page and the hub) hitting the same project seconds apart",
+        "A resume issued immediately after the second stop, possibly while the first stop was still tearing things down"
+      ],
+      "expected_behavior": "The second stop is a graceful 'already stopped'. The two pages agree on the project's state. The resume afterwards either works cleanly or clearly says why it can't yet.",
+      "failure_modes": [
+        "The two stop paths maintain separate state, leaving the project half-stopped: the hub says stopped while the process is still running and burning tokens",
+        "The second stop crashes mid-teardown and the project can never be resumed without manual cleanup",
+        "Resume during teardown races the stop and the project ends up zombie — unresumable and unstoppable"
+      ],
+      "priority": "medium",
+      "confidence_area": "projects/:id/stop",
+      "is_edge_case": true
     },
     {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "user_perspective": "",
-      "preconditions": null,
-      "steps": null,
-      "chaos_factors": null,
-      "expected_behavior": "",
-      "failure_modes": null,
-      "priority": "",
-      "confidence_area": "",
-      "is_edge_case": false
+      "scenario_id": "archive-runs-while-auditor-pages-through-history",
+      "title": "Maintenance archive kicks in while I'm paging through old actions",
+      "user_perspective": "I'm a compliance reviewer working through the full action history page by page for a quarterly audit. I've been at it for an hour and I'm on page 14 of 30.",
+      "preconditions": [
+        "Thousands of historical actions exist and I've been paging through them for an hour, taking notes with action references",
+        "A scheduled or admin-triggered maintenance archive runs while I'm mid-review, moving older records out of the live list"
+      ],
+      "steps": [
+        "I finished page 14 and clicked Next",
+        "Page 15 showed several actions I was sure I'd already reviewed on page 13, and some I'd noted earlier were nowhere to be found",
+        "I clicked one of the action references from my notes and got nothing useful"
+      ],
+      "chaos_factors": [
+        "The archive deleted or moved hundreds of rows out from under an active pagination, shifting every page boundary",
+        "My saved action references now point at archived records"
+      ],
+      "expected_behavior": "Pagination stays coherent enough that I don't see duplicates or silently skip records during a review — and a direct link to an archived action says 'this action has been archived' with a way to retrieve it, never a blank error.",
+      "failure_modes": [
+        "Page boundaries shift mid-review so some actions are silently never shown to the auditor — an invisible gap in a compliance review",
+        "Direct lookups of archived action IDs return a raw 404 or 500 with no mention that archiving is the reason",
+        "The archive job and the paginated reads deadlock or the reads return half-archived inconsistent rows"
+      ],
+      "priority": "medium",
+      "confidence_area": "api/maintenance/archive",
+      "is_edge_case": true
     }
   ],
   "executions": [
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "approve-button-double-click-race",
+      "area": "api/actions/:action_id/approve",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "critical",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "approve-vs-reject-two-teammates-same-instant",
+      "area": "api/actions/:action_id/reject",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "critical",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "email-approve-link-prefetched-by-security-scanner",
+      "area": "api/actions/approve-via-token",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "critical",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "slack-retry-after-slow-handler-ack",
+      "area": "api/slack/interact",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "high",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "policy-paste-smart-quotes-from-google-doc",
+      "area": "api/config/policies",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "high",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "config-two-tabs-read-modify-write-overwrite",
+      "area": "api/config",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "high",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "paginated-actions-page-zero-huge-limit",
+      "area": "api/actions/paginated",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "medium",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "rollback-partial-on-stale-overnight-action-list",
+      "area": "api/sessions/:session_id/rollback-partial",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "critical",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "pause-in-dashboard-resume-while-status-stale",
+      "area": "api/sessions/:session_id/resume",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "high",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "team-member-duplicate-add-trailing-newline",
+      "area": "api/team/members",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "medium",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "approval-route-concurrent-edit-by-two-admins",
+      "area": "api/approval-routes/:route_id",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "high",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "session-status-checked-after-machine-slept",
+      "area": "api/sessions/:session_id/status",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "medium",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "approval-route-name-pasted-from-slack-with-emoji",
+      "area": "api/approval-routes",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "medium",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "old-bookmarked-stop-button-double-fire",
+      "area": "projects/:id/stop",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "medium",
       "duration_ms": 0
     },
     {
-      "scenario_id": "",
-      "area": "",
+      "scenario_id": "archive-runs-while-auditor-pages-through-history",
+      "area": "api/maintenance/archive",
       "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
-      "duration_ms": 0
-    },
-    {
-      "scenario_id": "",
-      "area": "",
-      "mode": "static",
-      "passed": false,
-      "actual_behavior": "scenario is malformed",
-      "failure_reason": "missing required fields: steps, expected_behavior, confidence_area",
-      "priority": "",
+      "passed": true,
+      "actual_behavior": "structurally valid (not executed against a live target)",
+      "priority": "medium",
       "duration_ms": 0
     }
   ],
   "exec_summary": {
     "executed": false,
-    "count": 52,
-    "passed": 0,
-    "failed": 52
+    "count": 15,
+    "passed": 15,
+    "failed": 0
   },
-  "failures": [
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    },
-    {
-      "scenario_id": "",
-      "title": "",
-      "area": "",
-      "priority": "",
-      "description": "missing required fields: steps, expected_behavior, confidence_area"
-    }
+  "failures": null,
+  "stable_areas": [
+    "projects/:id/stop"
   ],
-  "stable_areas": [],
   "volatile_areas": [
-    "sessions/:id/pause",
-    "api/sessions/:session_id/rollback",
-    "sessions/:id",
-    "sessions/:id/resume",
-    "api/hub/projects/:id/resume",
-    "api/sessions/:session_id/actions",
-    "api/actions/:action_id",
     "api/sessions/:session_id",
-    "api/sessions/:session_id/status"
+    "api/actions/:action_id",
+    "sessions/:id",
+    "sessions/:id/pause",
+    "api/hub/projects/:id/resume",
+    "api/sessions/:session_id/status",
+    "api/sessions/:session_id/actions",
+    "sessions/:id/resume",
+    "api/sessions/:session_id/rollback"
   ],
-  "retired_areas": null,
+  "retired_areas": [
+    "projects/:id/stop"
+  ],
   "exit_code": 1,
-  "confidence_score": 0.7017989568819225,
+  "confidence_score": 0.7137444271924698,
   "adapter_name": "claude",
   "depth": "light"
 }
