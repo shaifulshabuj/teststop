@@ -65,7 +65,8 @@ func Detect() (AIAdapter, error) {
 }
 
 // ParseScenariosFromJSON parses a JSON array of scenarios from raw bytes.
-// It is tolerant of leading/trailing whitespace and markdown code fences.
+// It is tolerant of leading/trailing whitespace, markdown code fences, and
+// prose preamble (local models sometimes emit reasoning text before the array).
 //
 // After parsing, it validates that the batch is not entirely hollow: if every
 // scenario has an empty scenario_id AND empty title, the input was almost
@@ -80,9 +81,18 @@ func ParseScenariosFromJSON(data []byte) ([]scenario.Scenario, error) {
 	s = strings.TrimSuffix(s, "```")
 	s = strings.TrimSpace(s)
 
+	// Try to unmarshal directly first. If that fails, attempt to extract a JSON
+	// array from within the text — local models (e.g. qwen3:4b) sometimes emit
+	// reasoning prose before or after the array even when instructed not to.
 	var scenarios []scenario.Scenario
 	if err := json.Unmarshal([]byte(s), &scenarios); err != nil {
-		return nil, fmt.Errorf("ai: failed to parse scenarios JSON: %w\nraw output: %s", err, truncate(data, 500))
+		extracted, ok := extractJSONArray(s)
+		if !ok {
+			return nil, fmt.Errorf("ai: failed to parse scenarios JSON: %w\nraw output: %s", err, truncate(data, 500))
+		}
+		if err2 := json.Unmarshal([]byte(extracted), &scenarios); err2 != nil {
+			return nil, fmt.Errorf("ai: failed to parse scenarios JSON: %w\nraw output: %s", err, truncate(data, 500))
+		}
 	}
 
 	// Defense-in-depth: if every parsed scenario is hollow (missing both
@@ -102,6 +112,46 @@ func ParseScenariosFromJSON(data []byte) ([]scenario.Scenario, error) {
 	}
 
 	return scenarios, nil
+}
+
+// extractJSONArray scans s for the first '[' and finds its matching ']' using
+// a simple bracket counter. Returns the extracted substring and true on success.
+// This handles local models that emit prose before the JSON array.
+func extractJSONArray(s string) (string, bool) {
+	start := strings.Index(s, "[")
+	if start < 0 {
+		return "", false
+	}
+	depth := 0
+	inStr := false
+	escaped := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if c == '\\' && inStr {
+			escaped = true
+			continue
+		}
+		if c == '"' {
+			inStr = !inStr
+			continue
+		}
+		if inStr {
+			continue
+		}
+		if c == '[' {
+			depth++
+		} else if c == ']' {
+			depth--
+			if depth == 0 {
+				return s[start : i+1], true
+			}
+		}
+	}
+	return "", false
 }
 
 func truncate(b []byte, max int) string {
