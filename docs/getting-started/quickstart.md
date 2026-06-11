@@ -45,7 +45,7 @@ The first run takes 20–60 seconds depending on your AI CLI.
 A typical run looks like:
 
 ```
-teststop v0.1.0 — adversarial user testing
+teststop v0.3.1 — adversarial user testing
 
 Project:   my-api (Go · api)
 Adapter:   claude

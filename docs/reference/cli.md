@@ -28,7 +28,7 @@ teststop run [path] [flags]
 | `--threshold <n>` | `80` | Confidence threshold 0–100. Exit `0` when average confidence ≥ this. |
 | `--no-color` | `false` | Disable ANSI color output (useful for agents reading stdout) |
 | `--quiet` | `false` | Minimal output — prints only `OK`, `REVIEW`, `CRITICAL`, or `ERROR` |
-| `--target <url>` | _(none)_ | Base URL of a **running** system to execute scenarios against (v0.2). Empty = static validation only. |
+| `--target <url>` | _(none)_ | Base URL of a **running** system to execute scenarios against. Empty = static validation only. |
 | `--concurrency <n>` | `4` | Max scenarios executed in parallel |
 | `--exec-timeout <dur>` | `10s` | Per-request execution timeout (e.g. `15s`, `500ms`) |
 | `--max-retries <n>` | `2` | Retries for transient HTTP execution failures (transport errors, 5xx) |
@@ -54,7 +54,7 @@ teststop run --output json --no-color --quiet
 # Markdown report to stdout
 teststop run --output markdown
 
-# Execute scenarios against a running system (v0.2)
+# Execute scenarios against a running system
 TESTSTOP_SANDBOX=none teststop run --target http://localhost:8080
 
 # Tune execution against a staging instance
@@ -208,9 +208,9 @@ teststop version
 
 ```console
 $ teststop version
-teststop v0.2.1
+teststop v0.3.1
   commit:  a1b2c3d
-  built:   2026-06-07T09:00:00Z
+  built:   2026-06-11T00:00:00Z
   go:      go1.26.3
   os/arch: darwin/arm64
 ```
@@ -220,8 +220,8 @@ is recovered from the module build info, so it still reports the installed tag.
 The same value is available via the `--version` / `-v` flag:
 
 ```bash
-teststop --version    # teststop v0.2.1
-teststop -v           # teststop v0.2.1
+teststop --version    # teststop v0.3.1
+teststop -v           # teststop v0.3.1
 ```
 
 ---
