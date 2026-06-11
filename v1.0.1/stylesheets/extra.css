@@ -1,0 +1,268 @@
+/* =====================================================
+   teststop documentation — custom styles
+   ===================================================== */
+
+/* ── Hero section ────────────────────────────────────── */
+.ts-hero {
+  padding: 4rem 1.5rem 3rem;
+  text-align: center;
+  background: linear-gradient(135deg, #1a0533 0%, #2d1155 50%, #1a0533 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.ts-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 60% 40%, rgba(255, 87, 34, 0.12) 0%, transparent 70%),
+              radial-gradient(ellipse at 20% 80%, rgba(103, 58, 183, 0.15) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.ts-hero .ts-hero-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 87, 34, 0.4);
+  background: rgba(255, 87, 34, 0.1);
+  color: #ff7043;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+}
+
+.ts-hero h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem) !important;
+  font-weight: 800 !important;
+  line-height: 1.15 !important;
+  margin: 0 0 1rem !important;
+  color: #fff !important;
+  border: none !important;
+}
+
+.ts-hero h1 .accent {
+  color: #ff7043;
+}
+
+.ts-hero .ts-hero-subtitle {
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  color: rgba(255, 255, 255, 0.72);
+  max-width: 640px;
+  margin: 0 auto 2rem;
+  line-height: 1.7;
+}
+
+.ts-hero-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 3rem;
+}
+
+.ts-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.75rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  text-decoration: none !important;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.ts-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.ts-btn-primary {
+  background: #ff5722;
+  color: #fff !important;
+}
+
+.ts-btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* ── Feature grid ─────────────────────────────────────── */
+.ts-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin: 3rem 0;
+}
+
+.ts-feature {
+  padding: 1.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  background: var(--md-default-bg-color);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.ts-feature:hover {
+  border-color: var(--md-accent-fg-color);
+  transform: translateY(-2px);
+}
+
+.ts-feature-icon {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.ts-feature h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+}
+
+.ts-feature p {
+  font-size: 0.875rem;
+  color: var(--md-default-fg-color--light);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ── Pipeline diagram ─────────────────────────────────── */
+.ts-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 2rem 0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.ts-pipeline-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--md-default-bg-color);
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  transition: background 0.15s;
+}
+
+.ts-pipeline-step:last-child {
+  border-bottom: none;
+}
+
+.ts-pipeline-step:hover {
+  background: var(--md-code-bg-color);
+}
+
+.ts-pipeline-num {
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  border-radius: 50%;
+  background: var(--md-accent-fg-color);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.8125rem;
+}
+
+.ts-pipeline-content h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.ts-pipeline-content p {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--md-default-fg-color--light);
+  line-height: 1.5;
+}
+
+/* ── Confidence bar ──────────────────────────────────── */
+.ts-confidence-bar {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--md-default-fg-color--lightest);
+  overflow: hidden;
+  margin: 0.5rem 0;
+}
+
+.ts-confidence-bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #ef5350, #ff9800, #66bb6a);
+  transition: width 0.6s ease;
+}
+
+/* ── Code install block ──────────────────────────────── */
+.ts-install-block {
+  background: #0d0d0d;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  font-family: var(--md-code-font-family);
+  font-size: 0.9375rem;
+  color: #e0e0e0;
+  margin: 2rem 0;
+  position: relative;
+}
+
+.ts-install-block .prompt {
+  color: #ff7043;
+  user-select: none;
+}
+
+/* ── Version selector overrides ──────────────────────── */
+.md-version {
+  margin-right: 0.5rem;
+}
+
+/* ── Callout tweaks ──────────────────────────────────── */
+.md-typeset .admonition.adversarial,
+.md-typeset details.adversarial {
+  border-color: #ff5722;
+}
+
+.md-typeset .adversarial > .admonition-title,
+.md-typeset .adversarial > summary {
+  background-color: rgba(255, 87, 34, 0.1);
+}
+
+.md-typeset .adversarial > .admonition-title::before,
+.md-typeset .adversarial > summary::before {
+  background-color: #ff5722;
+  -webkit-mask-image: var(--md-admonition-icon--danger);
+          mask-image: var(--md-admonition-icon--danger);
+}
+
+/* ── Homepage hide TOC / nav ─────────────────────────── */
+[data-md-component="content"] .ts-no-toc .md-sidebar--secondary {
+  display: none;
+}
+
+/* ── Print tweaks ────────────────────────────────────── */
+@media print {
+  .ts-hero { background: none; }
+  .ts-btn { border: 1px solid #333; }
+}
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 600px) {
+  .ts-hero {
+    padding: 2.5rem 1rem 2rem;
+  }
+  .ts-hero-actions {
+    flex-direction: column;
+    align-items: center;
+  }
+  .ts-features {
+    grid-template-columns: 1fr;
+  }
+}
