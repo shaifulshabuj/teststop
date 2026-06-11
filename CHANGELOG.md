@@ -27,11 +27,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Cloud CLIs (claude, copilot) are still fully supported but opt-in:
   `TESTSTOP_CLI=claude` or `TESTSTOP_CLI=copilot`. `TESTSTOP_CLI=ollama` forces ollama only.
 
-  **Quality tradeoff (measured):** qwen3.6:latest generates 29–31 well-structured scenarios
-  in ~3–4 minutes. Waymark-specific scenarios (session expiry, approval tokens, IDOR,
-  partial rollbacks) showed high specificity. Scenario depth and edge-case creativity are
-  moderately lower than claude's output; for production runs where quota is not a constraint,
-  `TESTSTOP_CLI=claude` remains the higher-quality choice.
+  **Quality tradeoff (measured, against waymark API project):**
+
+  | Model | Scenarios | Time | Notes |
+  |-------|-----------|------|-------|
+  | `qwen3.6:latest` | 29–31 | ~3–4 min | High specificity; IDOR, race conditions, token expiry |
+  | `gemma4:latest` | 52 | ~8 min | Most thorough; covers auth, concurrency, edge inputs |
+  | `qwen3:4b` | — | — | Not viable; outputs reasoning prose, never generates JSON |
+
+  Scenario depth and edge-case creativity from local models are moderately lower than
+  claude's output. For production runs where quota is not a concern,
+  `TESTSTOP_CLI=claude` remains the highest-quality choice.
+
+- **Resilient JSON parsing for local models** (`ParseScenariosFromJSON`). Local models
+  produce sloppier output than cloud CLIs. The parser now uses a three-pass strategy:
+  (1) direct unmarshal; (2) extract `[…]` from prose-wrapped output (qwen3:4b pattern —
+  reasoning before JSON); (3) sanitize invalid JSON escape sequences then retry (gemma4
+  pattern — emits `\xNN` hex notation which is not valid JSON). Cloud adapter output
+  is unaffected (pass 1 always succeeds for claude/copilot).
 
 - **Design document** (`docs/design/ollama-adapter.md`). Records the HTTP-vs-CLI decision,
   `num_ctx` rationale, `think: false` approach, and JSON-suffix strategy.
