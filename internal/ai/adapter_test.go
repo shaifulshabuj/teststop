@@ -1,6 +1,7 @@
 package ai_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/shaifulshabuj/teststop/internal/ai"
@@ -146,5 +147,28 @@ func TestParseScenarios_multipleScenarios(t *testing.T) {
 	}
 	if !scenarios[0].IsEdgeCase {
 		t.Error("expected first scenario to be edge case")
+	}
+}
+
+// TestParseScenarios_hollowArray exercises the defense-in-depth validation that
+// rejects a parsed batch where every object is hollow (empty scenario_id and
+// title). This is the failure mode when the raw AI CLI event stream is
+// accidentally fed to ParseScenariosFromJSON instead of the inner result string.
+func TestParseScenarios_hollowArray_rejected(t *testing.T) {
+	// Mimics the JSONL streaming events from claude CLI 2.1.x+ being parsed as
+	// scenarios: each event object has no fields that match Scenario json tags,
+	// so all structs come out zero-valued.
+	hollow := `[
+		{"type":"system","session_id":"abc","subtype":"init"},
+		{"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}},
+		{"type":"assistant","message":{"role":"assistant"},"session_id":"abc"},
+		{"type":"result","subtype":"success","is_error":false,"result":"...","session_id":"abc"}
+	]`
+	_, err := ai.ParseScenariosFromJSON([]byte(hollow))
+	if err == nil {
+		t.Fatal("expected error for hollow scenario array, got nil")
+	}
+	if !strings.Contains(err.Error(), "hollow") {
+		t.Errorf("error should mention 'hollow', got: %v", err)
 	}
 }
