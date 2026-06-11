@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- Shield background -->
+  <path d="M24 4L6 12v12c0 9.94 7.72 19.26 18 21 10.28-1.74 18-11.06 18-21V12L24 4z"
+        fill="#6750A4" opacity="0.9"/>
+  <!-- Stop/halt symbol -->
+  <rect x="15" y="15" width="18" height="18" rx="3" fill="white" opacity="0.95"/>
+  <!-- Inner accent -->
+  <rect x="20" y="20" width="8" height="8" rx="1" fill="#FF5722"/>
+</svg>
