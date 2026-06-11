@@ -68,8 +68,8 @@ These variables control the AI adapter and sandbox isolation (not `run`-specific
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TESTSTOP_CLI` | `auto` | Which AI CLI to use: `auto` \| `claude` \| `copilot` |
-| `TESTSTOP_MODEL` | _(empty)_ | Model flag passed to the AI CLI |
+| `TESTSTOP_CLI` | `auto` | AI backend: `auto` \| `ollama` \| `claude` \| `copilot` |
+| `TESTSTOP_MODEL` | _(see below)_ | Model to use (backend-specific) |
 | `TESTSTOP_SANDBOX` | `auto` | Sandbox mode: `auto` \| `required` \| `none` |
 
 ---
@@ -80,20 +80,32 @@ Controls which AI adapter teststop uses.
 
 | Value | Behavior |
 |-------|----------|
-| `auto` _(default)_ | Try `claude` first, then `copilot`; error if neither found |
+| `auto` _(default)_ | ollama → claude → copilot; error if none available |
+| `ollama` | Use ollama HTTP API; error if `localhost:11434` not reachable |
 | `claude` | Use Claude CLI; error if not on PATH |
 | `copilot` | Use GitHub Copilot CLI; error if not on PATH |
 
 ```bash
+# Default: uses ollama if running, falls back to cloud CLIs
+teststop run
+
+# Opt in to cloud CLI (uses account quota)
 TESTSTOP_CLI=claude teststop run
 TESTSTOP_CLI=copilot teststop run
+
+# Force local model
+TESTSTOP_CLI=ollama teststop run
 ```
 
 ---
 
 ## `TESTSTOP_MODEL`
 
-Passed as `--model <value>` to the AI CLI. Only applies to adapters that support model selection.
+Selects the model within the active backend.
+
+- **ollama** (default): `qwen3.6:latest`. Other options: `qwen3:4b`, `gemma4:latest`, `llama3.2:latest`
+- **claude**: passed as `--model <value>` to the claude CLI (e.g. `claude-sonnet-4-6`)
+- **copilot**: not used
 
 | CLI | Support | Example |
 |-----|---------|---------|

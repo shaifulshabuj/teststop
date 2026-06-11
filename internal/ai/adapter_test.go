@@ -150,6 +150,64 @@ func TestParseScenarios_multipleScenarios(t *testing.T) {
 	}
 }
 
+// TestParseScenarios_invalidEscapes verifies that invalid JSON escape sequences
+// emitted by some local models (e.g. gemma4 \xNN hex notation) are sanitized
+// before parsing so the scenario array is still recovered.
+func TestParseScenarios_invalidEscapes(t *testing.T) {
+	// \x in a JSON string is invalid; gemma4 emits this for some characters.
+	raw := []byte(`[{"scenario_id":"esc-001","title":"Tab conflict","user_perspective":"I\x27m a manager","preconditions":["logged in"],"steps":["open two tabs"],"chaos_factors":[],"expected_behavior":"idempotent","failure_modes":["duplicate action"],"priority":"high","confidence_area":"actions","is_edge_case":false}]`)
+
+	scenarios, err := ai.ParseScenariosFromJSON(raw)
+	if err != nil {
+		t.Fatalf("invalid escape should be sanitized: %v", err)
+	}
+	if len(scenarios) != 1 {
+		t.Fatalf("expected 1 scenario, got %d", len(scenarios))
+	}
+	if scenarios[0].ScenarioID != "esc-001" {
+		t.Errorf("unexpected scenario_id: %s", scenarios[0].ScenarioID)
+	}
+	// \x27 is a hex-escaped apostrophe; after sanitization it becomes 27 (literal digit chars)
+	if !strings.Contains(scenarios[0].UserPerspective, "27") {
+		t.Errorf("expected sanitized content in user_perspective: %q", scenarios[0].UserPerspective)
+	}
+}
+
+// TestParseScenarios_proseBeforeArray verifies that a local model emitting reasoning
+// prose before the JSON array is still parsed correctly (qwen3:4b failure mode).
+func TestParseScenarios_proseBeforeArray(t *testing.T) {
+	raw := []byte(`We are generating exactly 30 scenarios for the waymark API system.
+The system type is "api", so we focus on the API level.
+
+[{"scenario_id":"prose-001","title":"Double submit","user_perspective":"impatient user","preconditions":[],"steps":["submit twice"],"chaos_factors":[],"expected_behavior":"idempotent","failure_modes":["duplicate entry"],"priority":"high","confidence_area":"api/submit","is_edge_case":false}]`)
+
+	scenarios, err := ai.ParseScenariosFromJSON(raw)
+	if err != nil {
+		t.Fatalf("prose preamble should be tolerated: %v", err)
+	}
+	if len(scenarios) != 1 {
+		t.Fatalf("expected 1 scenario, got %d", len(scenarios))
+	}
+	if scenarios[0].ScenarioID != "prose-001" {
+		t.Errorf("unexpected scenario_id: %s", scenarios[0].ScenarioID)
+	}
+}
+
+// TestParseScenarios_proseAfterArray verifies that trailing prose after ']' is ignored.
+func TestParseScenarios_proseAfterArray(t *testing.T) {
+	raw := []byte(`[{"scenario_id":"trail-001","title":"T","user_perspective":"u","preconditions":[],"steps":[],"chaos_factors":[],"expected_behavior":"e","failure_modes":[],"priority":"low","confidence_area":"x","is_edge_case":false}]
+
+This completes the scenario generation.`)
+
+	scenarios, err := ai.ParseScenariosFromJSON(raw)
+	if err != nil {
+		t.Fatalf("trailing prose should be tolerated: %v", err)
+	}
+	if len(scenarios) != 1 {
+		t.Errorf("expected 1 scenario, got %d", len(scenarios))
+	}
+}
+
 // TestParseScenarios_hollowArray exercises the defense-in-depth validation that
 // rejects a parsed batch where every object is hollow (empty scenario_id and
 // title). This is the failure mode when the raw AI CLI event stream is
