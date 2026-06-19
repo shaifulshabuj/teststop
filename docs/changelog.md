@@ -7,24 +7,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [v1.1.0] — 2026-06-12
 
 ### Added
 
-- **AI-mode concurrency cap** (#45) — `--ai-concurrency` flag (default 1) decouples AI-mode
-  parallelism from HTTP-mode parallelism. AI executor calls now run through a dedicated
-  semaphore so a high `--concurrency` value no longer fires multiple `claude -p` calls in
-  parallel and exhausts the rate-limit window. Configurable via `.teststop/config.yaml`
-  (`ai_concurrency` key) and `TESTSTOP_RUN_AI_CONCURRENCY` env var with the same three-tier
-  precedence chain as all other run settings.
+- **ollama adapter — local-model backend** (`internal/ai/ollamacli.go`, closes #30).
+  teststop now ships a first-class ollama adapter that calls the ollama HTTP API at
+  `localhost:11434`. No subprocess, no API key, no account quota.
 
-- **Structured error detection for claude adapter** (#46) — `claudecli.go` now passes
-  `--output-format json` to the `claude` CLI. The JSON envelope (`is_error`,
-  `rate_limit_event`, `result`) is parsed before downstream scenario/verdict parsing, so
-  rate-limit events, auth errors, and refusals are detected precisely and surfaced as
-  *skipped* (infrastructure errors, not verdicts about the target). The `.result` field is
-  extracted transparently, so `ParseScenariosFromJSON` and `parseVerdict` continue to work
-  unchanged. The copilot adapter is unaffected.
+  - Default model: `qwen3.6:latest` (36B Q4_K_M). Override with `TESTSTOP_MODEL`.
+  - `stream: false`, `think: false`, `num_ctx: 32768` per request.
+  - Automatic `<think>…</think>` block stripping for qwen3 models on older ollama builds.
+  - JSON-only output constraint appended to the mandate for local models (local models are
+    less instruction-following than cloud models; cloud adapters are unaffected).
+  - `IsOllamaAvailable()` pings `localhost:11434` with a 2s timeout for fast detection.
+
+- **Auto-detection precedence changed: ollama → claude → copilot.**
+  `TESTSTOP_CLI=auto` (the default) now prefers ollama when the local server is reachable.
+  Cloud CLIs (claude, copilot) are still fully supported but opt-in:
+  `TESTSTOP_CLI=claude` or `TESTSTOP_CLI=copilot`. `TESTSTOP_CLI=ollama` forces ollama only.
+
+  **Quality tradeoff (measured, against waymark API project):**
+
+  | Model | Scenarios | Time | Notes |
+  |-------|-----------|------|-------|
+  | `qwen3.6:latest` | 29–31 | ~3–4 min | High specificity; IDOR, race conditions, token expiry |
+  | `gemma4:latest` | 52 | ~8 min | Most thorough; covers auth, concurrency, edge inputs |
+  | `qwen3:4b` | — | — | Not viable; outputs reasoning prose, never generates JSON |
+
+  Scenario depth and edge-case creativity from local models are moderately lower than
+  claude's output. For production runs where quota is not a concern,
+  `TESTSTOP_CLI=claude` remains the highest-quality choice.
+
+- **Resilient JSON parsing for local models** (`ParseScenariosFromJSON`). Local models
+  produce sloppier output than cloud CLIs. The parser now uses a three-pass strategy:
+  (1) direct unmarshal; (2) extract `[…]` from prose-wrapped output (qwen3:4b pattern —
+  reasoning before JSON); (3) sanitize invalid JSON escape sequences then retry (gemma4
+  pattern — emits `\xNN` hex notation which is not valid JSON). Cloud adapter output
+  is unaffected (pass 1 always succeeds for claude/copilot).
+
+- **Design document** (`docs/design/ollama-adapter.md`). Records the HTTP-vs-CLI decision,
+  `num_ctx` rationale, `think: false` approach, and JSON-suffix strategy.
+
+---
+
+## [v1.0.1] — 2026-06-11
+
+### Fixed
+
+- **claude CLI 2.1.x streaming format** (`internal/ai`). claude 2.1.172 changed
+  its `--output-format json` output from a single JSON object to a **JSON array
+  of streaming events**. `parseClaudeEnvelope` failed to unmarshal the array into
+  a struct, triggering the legacy fallback which fed the raw event array to
+  `ParseScenariosFromJSON`. The parser then silently unmarshaled each event object
+  (with no matching field names) into a zero-value `Scenario` — yielding batches
+  of hollow structs with empty title, steps, priority, and confidence_area. Exit
+  code was 1 ("review needed") rather than an error, so the defect was silent.
+
+  `parseClaudeEnvelope` now handles **both** formats:
+  - Single JSON object `{…}` — legacy path, unchanged.
+  - JSON array `[…]` — finds the last event where `"type":"result"` and returns
+    its `is_error` / `result` fields. Error detection (rate-limit, auth, refusal)
+    works correctly for both formats.
+
+  `ParseScenariosFromJSON` also gains a **hollow-batch guard**: if every parsed
+  scenario has an empty `scenario_id` AND `title`, an explicit error is returned
+  instead of the silent zero-value batch. This is defense-in-depth that fires even
+  if the envelope parsing falls back to raw output.
+
+---
+
+## [v1.0.0] — 2026-06-11
+
+### Added
+
+- **`.teststop/config.yaml` support.** The optional per-project config file is
+  now real. Every key maps one-to-one onto an existing `teststop run` flag.
+  Settings resolve with precedence **config file < `TESTSTOP_RUN_*` env var <
+  explicit CLI flag**. A missing file is not an error; malformed YAML or an
+  unknown key fails loudly. See `.teststop/config.example.yaml` for the keys.
+
+- **`--ai-concurrency` flag** (default `1`). Caps the number of concurrently
+  running AI-mode scenario executions to prevent rate-limit exhaustion. Config
+  key `ai_concurrency`; env `TESTSTOP_RUN_AI_CONCURRENCY`.
+
+- **Structured AI error detection.** The Claude adapter now calls
+  `claude --output-format json` and parses the outer envelope, surfacing
+  structured errors (rate-limit, auth failure, refusal) with context instead
+  of raw stderr. Non-zero exits and envelope `is_error: true` both map to
+  informative error messages.
+
+- **E2E pipeline test** (`test/e2e/`). A full reader → mandate → adapter →
+  memory → reporter → exit-code integration test using a fake-claude fixture
+  script. Runs without real tokens; skippable via `-short`.
+
+- **v1.0 contracts frozen** (`CONTRACTS.md`). Exit codes, scenario JSON schema,
+  run output envelope, memory file format, and environment variables are
+  declared stable. Breaking changes require a major version bump.
+
+- **`examples/waymark-demo/`**. Replayable demo artifact: 52-scenario run
+  against the waymark MCP middleware repo, with the captured JSON report,
+  Markdown summary, the mandate used, and replay instructions.
+
+### Changed
+
+- `pkg/scenario/types.go` package comment declares the schema FROZEN at v1.0.
+- `internal/cli` test coverage raised from 28.9% → 51.6%.
 
 ---
 
@@ -34,14 +122,24 @@ Correctness fixes from a Waymark usage review (#44).
 
 ### Fixed
 
-- **AI infrastructure errors no longer count as scenario failures** (#44). An AI
-  CLI error (e.g. exit 1 on rate-limit exhaustion) or unparseable verdict now marks
-  the scenario **skipped**, not failed — excluded from confidence, failures, and the
-  exit code, and reported separately (`exec_summary.skipped`). A rate-limited run no
-  longer fabricates failures that drag confidence down.
-- **Spawned AI runs in a neutral working directory** (#44). Direct `claude`/`copilot`
-  calls run from the system temp dir, so they no longer load the target project's
-  `CLAUDE.md` / MCP configuration.
+- **AI infrastructure errors no longer count as scenario failures** (#44, finding 1).
+  When the AI CLI errors (e.g. exit 1 on rate-limit exhaustion) or returns an
+  unparseable verdict, the scenario is now marked **skipped** instead of failed.
+  Skipped results are excluded from confidence scoring, the failures list, and the
+  exit code, and are reported separately (`exec_summary.skipped`,
+  `executions[].skipped`). Previously a rate-limited run fabricated "failures" that
+  dragged confidence down (e.g. 68.7% instead of ~91%) while saying nothing about
+  the system under test.
+- **Spawned AI runs in a neutral working directory** (#44, finding 3). Direct
+  (non-sandboxed) `claude`/`copilot` calls now run from the system temp dir, so they
+  no longer inherit teststop's cwd and load the *target project's* `CLAUDE.md` / MCP
+  configuration — which could contaminate behavior or fail when those MCP servers
+  are unavailable to a subprocess.
+
+### Notes
+
+- Findings 2 (separate AI-mode concurrency cap) and 4 (`--output-format json` for
+  structured rate-limit/error detection) from #44 are tracked as follow-up issues.
 
 ---
 
@@ -49,19 +147,26 @@ Correctness fixes from a Waymark usage review (#44).
 
 ### Added
 
-- **Concurrency exec mode** (#43) — `exec.concurrency`: when `> 1`, the HTTP
-  executor fires N identical requests at once and asserts exactly one wins (the
-  rest cleanly rejected), deterministically verifying race guards like
-  double-submit and claim-the-last-item. The mandate invites the AI to emit
-  `concurrency` for race scenarios.
+- **Concurrency exec mode** (#43) — `ExecSpec.concurrency`: when `> 1`, the HTTP
+  executor fires N identical requests simultaneously and asserts the guard yields
+  exactly one winner (the rest cleanly rejected). Deterministically verifies race
+  guards like double-submit and claim-the-last-item. The mandate now invites the
+  AI to emit `concurrency` for race scenarios.
 
 ### Changed
 
-- **Reporter honesty** (#42) — runs without `--target` are clearly labelled
-  **predicted** (a risk surface), not executed. Reports show "PREDICTED RISKS" /
-  "PREDICTED CONFIDENCE" with a caveat to run `--target` to verify; executed runs
-  keep the verified ✓/✗ + CONFIDENCE framing.
-- `exec_summary` JSON now carries `executed` (bool) and `count` (int).
+- **Reporter honesty** (#42) — runs without `--target` are now clearly labelled as
+  **predicted** (risk surface), not executed. Text/Markdown reports show
+  "PREDICTED RISKS" / "PREDICTED CONFIDENCE" with a caveat to run `--target` to
+  verify; executed runs keep the verified ✓/✗ + CONFIDENCE framing.
+- `exec_summary` JSON now carries `executed` (bool) and `count` (int) — previously
+  `executed` held the count. Agents should read `executed` as "was this run
+  executed against a live target."
+
+### Notes
+
+- Concurrency mode tests guards reachable from the target's current state;
+  scenarios needing per-request setup remain future work.
 
 ---
 
@@ -77,7 +182,8 @@ Correctness fixes from a Waymark usage review (#44).
 
 ### Changed
 
-- GoReleaser now injects `main.commit` and `main.date` alongside `main.version`.
+- GoReleaser now injects `main.commit` and `main.date` in addition to
+  `main.version`.
 
 ---
 
@@ -92,50 +198,51 @@ teststop becomes a scenario **runner**, not just a scenario **generator**.
 - `teststop run --target <url>` — execute generated scenarios against a running
   system and feed real pass/fail outcomes into confidence memory
 - **Hybrid execution**, chosen per scenario:
-    - **HTTP** — deterministic `net/http` execution for scenarios carrying a
-      structured `exec` block (retries on transport errors and `5xx`,
-      per-request timeout, status-code judging)
-    - **AI-driven** — for prose-only scenarios when `--target` is set; the AI
-      performs the steps and returns a structured verdict
-    - **Static** — structural validation only (the no-`--target` default,
-      preserving v0.1 behavior)
+  - `HTTPExecutor` — deterministic `net/http` execution for scenarios carrying a
+    structured `exec` block (retries on transport errors and 5xx, per-request
+    timeout, status-code judging)
+  - `AIExecutor` — AI-driven execution for prose-only scenarios when `--target`
+    is set; the AI performs the steps and returns a structured verdict
+  - `StaticExecutor` — structural validation only (the no-`--target` default,
+    preserving v0.1 behavior)
 - Bounded, order-stable concurrent execution with context cancellation
 - New `run` flags: `--target`, `--concurrency` (4), `--exec-timeout` (10s),
   `--max-retries` (2)
 
 **Scenario Schema (additive, non-breaking)**
 
-- Optional `exec` field on the scenario object (`mode`, `method`, `path`,
-  `headers`, `body`, `expected_status`, `command`, `expected_exit`). Legacy v0.1
-  JSON without `exec` parses unchanged.
+- Optional `exec` field on `Scenario` (`mode`, `method`, `path`, `headers`,
+  `body`, `expected_status`, `command`, `expected_exit`). Legacy v0.1 scenario
+  JSON without `exec` continues to parse unchanged.
 
 **AI Adapter**
 
-- `Prompt(input)` added to the adapter interface for AI-driven execution;
-  `GenerateScenarios` builds on it. Claude and Copilot adapters updated.
+- `Prompt(input)` added to the `AIAdapter` interface for AI-driven execution;
+  `GenerateScenarios` now builds on it. Both Claude and Copilot adapters updated.
 
 **Reporting**
 
-- `RunResult` gains `executions` and `exec_summary`; text and Markdown reports
-  render an execution summary. Failures now derive from real execution outcomes.
-  `ExecutionResult.duration_ms` is emitted in true milliseconds.
+- `RunResult` gains `executions` and an `exec_summary` (executed/passed/failed +
+  target); text and Markdown reports render an execution summary. Failures are
+  now derived from real execution outcomes.
 
 **Mandate**
 
-- `mandate/base.md` invites an optional `exec` block when a scenario maps cleanly
-  to a single concrete HTTP request.
+- `mandate/base.md` now invites the AI to emit an optional `exec` block when a
+  scenario maps cleanly to a single concrete HTTP request.
 
 ### Changed
 
-- The `run` pipeline updates confidence from **real** execution outcomes instead
-  of granting every area an automatic pass. A failed `critical` scenario now
-  yields exit code `2`.
+- The `run` pipeline executes scenarios and updates confidence from **real**
+  outcomes instead of granting every area an automatic pass. A failed
+  `critical` scenario now yields exit code `2`.
 
 ### Notes
 
 - A sandboxed (Apple Container) AI tester cannot reach the host's `localhost`;
   use `TESTSTOP_SANDBOX=none` for local targets, or target a reachable
-  staging/production-like URL.
+  staging/production-like URL. Sandbox-network-aware execution (wiring the
+  reserved `Config.Runner`) is tracked as future work.
 
 ---
 
@@ -145,83 +252,24 @@ First public release of teststop.
 
 ### Added
 
-**Core Pipeline**
-
-- `teststop run` — full adversarial testing pipeline: scan → mandate → generate → memory → report
-- Static project scanner (`internal/reader/`) — detects language, system type, routes, flows, and dependencies across Go, Python, TypeScript, Ruby, Rust, and more
-- Mandate composer (`internal/mandate/`) — injects project context and memory into `mandate/base.md`
-- Confidence memory system (`internal/memory/`) — per-area scoring with exponential approach formula
-- Area retirement at ≥ 0.95 confidence AND ≥ 15 test count
-- Reporter (`internal/reporter/`) — JSON, ANSI text, and Markdown output formats
-
-**AI Adapters**
-
-- Claude CLI adapter (`internal/ai/claudecli.go`) — calls `claude -p "<mandate>"` with optional `--model`
-- GitHub Copilot CLI adapter (`internal/ai/copilotcli.go`) — calls `copilot -p "<mandate>" -s --no-ask-user`
-- Auto-detection via `TESTSTOP_CLI` environment variable
-
-**Sandbox Isolation**
-
-- Apple Container integration (`internal/sandbox/`) — runs AI CLI in isolated VM
-- Three modes: `auto`, `required`, `none` via `TESTSTOP_SANDBOX`
-- Read-only credential mounts (`~/.claude`, `~/.config/gh`)
-- Runtime image: `ghcr.io/shaifulshabuj/teststop-agent:latest` (Ubuntu 24.04 minimal)
-- Automatic fallback to direct execution when container not available
-
-**CLI Commands**
-
-- `teststop run` — main test command with `--depth`, `--output`, `--threshold`, `--no-color`, `--quiet`
-- `teststop status` — confidence state table
-- `teststop memory` — show and reset memory
-- `teststop report` — last run report
-- `teststop mandate --show` — display composed mandate
-
-**The Mandate**
-
-- `mandate/base.md` — adversarial user mandate with 10 behavior patterns, 11 chaos conditions, 6 system type adaptations
-- Embedded in binary via `//go:embed base.md`
-
-**Scenario Schema**
-
-- `pkg/scenario/types.go` — stable JSON contract for AI-generated scenarios
-- Fields: `scenario_id`, `title`, `user_perspective`, `preconditions`, `steps`, `chaos_factors`, `expected_behavior`, `failure_modes`, `priority`, `confidence_area`, `is_edge_case`
-
-**Distribution**
-
-- GoReleaser configuration — 4 targets: `darwin/arm64`, `darwin/amd64`, `linux/arm64`, `linux/amd64`
-- GitHub Actions CI workflow — build, test, vet on push and PR
-- GitHub Actions Release workflow — test + GoReleaser on version tags
-
-**Exit Codes**
-
-- `0` — confidence threshold met
-- `1` — below threshold (review required)
-- `2` — critical failures found
-- `3` — teststop internal error
+- `teststop run` — full adversarial testing pipeline: scan → mandate → generate
+  → memory → report
+- Static project scanner, mandate composer, confidence memory system with
+  area retirement, and JSON / ANSI text / Markdown reporters
+- Claude and GitHub Copilot CLI adapters with `TESTSTOP_CLI` auto-detection
+- Apple Container sandbox isolation (`auto` / `required` / `none`) with
+  read-only credential mounts and direct-execution fallback
+- CLI commands: `run`, `status`, `memory`, `report`, `mandate --show`
+- `mandate/base.md` — adversarial user mandate, embedded via `//go:embed`
+- Stable scenario JSON schema (`pkg/scenario/types.go`)
+- GoReleaser distribution (darwin/linux × amd64/arm64) and CI/Release workflows
+- Exit codes: `0` ok, `1` review, `2` critical, `3` internal error
 
 ---
 
-## Roadmap
-
-### v0.2 (released)
-
-- ✅ **Scenario executor** — run generated scenarios against a live system _(shipped in v0.2.0)_
-
-Items that were on the v0.2 roadmap but remain unshipped:
-
-- **Ollama adapter** — local model support via `TESTSTOP_CLI=ollama` ([issue #30](https://github.com/shaifulshabuj/teststop/issues/30))
-- **`teststop watch`** — file-watching mode that re-runs on code changes
-- **Sandbox-network-aware execution** — run the executor inside the sandbox network
-
-### v1.0 (planned)
-
-- **Waymark integration** — governance hooks for AI agent workflows
-- **DocuFlow integration** — feed project documentation into mandate context
-- **CI/CD plugins** — native GitHub Actions, GitLab CI support
-- **`teststop diff`** — scenario comparison between runs
-
----
-
+[v1.1.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v1.1.0
+[v1.0.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v1.0.1
+[v1.0.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v1.0.0
 [v0.3.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.3.1
 [v0.3.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.3.0
 [v0.2.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.2.1
