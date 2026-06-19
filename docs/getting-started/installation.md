@@ -93,7 +93,7 @@ teststop --version
 ```
 
 ```
-teststop v0.3.1
+teststop v1.1.0
 ```
 
 ---
