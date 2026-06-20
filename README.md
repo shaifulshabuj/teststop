@@ -214,4 +214,4 @@ See [MANDATE.md](./MANDATE.md) for contribution guidelines.
 
 ---
 
-*teststop v0.3.1*
+*teststop v1.1.0*

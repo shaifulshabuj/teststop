@@ -209,7 +209,7 @@ teststop version
 
 ```console
 $ teststop version
-teststop v0.3.1
+teststop v1.1.0
   commit:  a1b2c3d
   built:   2026-06-11T00:00:00Z
   go:      go1.26.3
@@ -221,8 +221,8 @@ is recovered from the module build info, so it still reports the installed tag.
 The same value is available via the `--version` / `-v` flag:
 
 ```bash
-teststop --version    # teststop v0.3.1
-teststop -v           # teststop v0.3.1
+teststop --version    # teststop v1.1.0
+teststop -v           # teststop v1.1.0
 ```
 
 ---

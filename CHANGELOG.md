@@ -267,6 +267,7 @@ First public release of teststop.
 
 ---
 
+[v1.1.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v1.1.0
 [v1.0.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v1.0.1
 [v1.0.0]: https://github.com/shaifulshabuj/teststop/releases/tag/v1.0.0
 [v0.3.1]: https://github.com/shaifulshabuj/teststop/releases/tag/v0.3.1
