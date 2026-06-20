@@ -116,6 +116,25 @@ func runCmdE(cmd *cobra.Command, args []string) error {
 		AIConcurrency: runAIConcurrency,
 		Adapter:       adapter,
 	}
+
+	if !runQuiet && runOutput != "json" {
+		fmt.Fprintf(os.Stderr, "Running %d scenarios via %s backend...\n", len(scenarios), adapter.Name())
+		execCfg.Progress = func(idx, total int, phase string, s scenario.Scenario, r *executor.ExecutionResult) {
+			prefix := fmt.Sprintf("[%2d/%d]", idx+1, total)
+			if phase == "start" {
+				fmt.Fprintf(os.Stderr, "%s scenario %q  \u2192 running...\n", prefix, s.Title)
+			} else if phase == "done" {
+				if !r.Passed && !r.Skipped {
+					fmt.Fprintf(os.Stderr, "%s scenario %q  \u2192 flagged\n", prefix, s.Title)
+				} else if r.Skipped {
+					fmt.Fprintf(os.Stderr, "%s scenario %q  \u2192 skipped\n", prefix, s.Title)
+				} else {
+					fmt.Fprintf(os.Stderr, "%s scenario %q  \u2192 pass\n", prefix, s.Title)
+				}
+			}
+		}
+	}
+
 	executions := executor.Run(cmd.Context(), execCfg, scenarios)
 
 	// 8. Update memory from real execution outcomes. Skipped results (AI infra
@@ -155,6 +174,17 @@ func runCmdE(cmd *cobra.Command, args []string) error {
 	}
 
 	// 13. Exit with appropriate code.
+	if !runQuiet && runOutput != "json" {
+		statusStr := "OK"
+		if result.ExitCode == 1 {
+			statusStr = "exit 1 (REVIEW NEEDED)"
+		} else if result.ExitCode == 2 {
+			statusStr = "exit 2 (CRITICAL FAILURE)"
+		} else if result.ExitCode != 0 {
+			statusStr = fmt.Sprintf("exit %d (ERROR)", result.ExitCode)
+		}
+		fmt.Fprintf(os.Stderr, "%d scenarios \u00b7 %d flagged for review \u00b7 %s\n", len(scenarios), len(result.Failures), statusStr)
+	}
 	os.Exit(result.ExitCode)
 	return nil
 }

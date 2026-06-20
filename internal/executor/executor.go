@@ -76,6 +76,7 @@ type Config struct {
 	AIConcurrency  int             // max AI-mode executions in parallel (default 1)
 	Adapter        ai.AIAdapter    // AI backend for AI-driven execution
 	Runner         *sandbox.Runner // reserved for future sandbox-aware execution
+	Progress       func(idx, total int, phase string, s scenario.Scenario, r *ExecutionResult) // callback for live progress
 }
 
 func (c Config) withDefaults() Config {
@@ -148,6 +149,9 @@ func Run(ctx context.Context, cfg Config, scenarios []scenario.Scenario) []Execu
 
 		go func(i int, s scenario.Scenario) {
 			defer func() { <-sem }()
+			if cfg.Progress != nil {
+				cfg.Progress(i, len(scenarios), "start", s, nil)
+			}
 			if cfg.isAIMode(s) {
 				aiSem <- struct{}{}
 				defer func() { <-aiSem }()
@@ -159,6 +163,9 @@ func Run(ctx context.Context, cfg Config, scenarios []scenario.Scenario) []Execu
 			r.Area = s.ConfidenceArea
 			r.Priority = s.Priority
 			results[i] = r
+			if cfg.Progress != nil {
+				cfg.Progress(i, len(scenarios), "done", s, &r)
+			}
 			done <- i
 		}(i, s)
 	}
