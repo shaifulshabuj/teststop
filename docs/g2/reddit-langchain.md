@@ -12,7 +12,7 @@ Instead of asserting on the internal state of your chain, teststop dynamically g
 
 You can think of it as a synthetic chaotic user that generates the weird traffic your observability platform (like LangSmith) then monitors. 
 
-It runs entirely from the CLI and uses a local Ollama model by default (or Claude if you prefer). It outputs standard exit codes (0, 1, 2) and JSON, so you can easily drop it into your CI/CD pipeline alongside your existing LangChain evals.
+It runs entirely from the CLI and uses a local Ollama model by default (or Claude if you prefer). It outputs standard exit codes (0–3) and JSON, so you can easily drop it into your CI/CD pipeline alongside your existing LangChain evals.
 
 I'm in the early stages of pivoting this project toward general LLM evaluation and want to see if other agent builders find this "external attacker" angle useful. Let me know what you think!
 
