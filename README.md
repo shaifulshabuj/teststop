@@ -69,6 +69,10 @@ teststop run --target http://localhost:8080 --output json
 
 The JSON output schema produced by `--output json` is strictly versioned and safe for agent consumption.
 
----
+
 
 *teststop v1.1.0*
+
+## License
+
+[MIT](LICENSE)
